@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<process name="LoanApprovalProcess"
+         targetNamespace="http://example.com/loan"
+         xmlns="http://docs.oasis-open.org/wsbpel/2.0/process/executable"
+         xmlns:bpelx="http://www.ibm.com/xmlns/prod/websphere/business-process/6.0.0"
+         xmlns:tns="http://example.com/loan"
+         suppressJoinFailure="yes"
+         expressionLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0"
+         queryLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0">
+
+  <partnerLinks>
+    <partnerLink name="client"
+                 partnerLinkType="tns:LoanApprovalLT"
+                 myRole="approver"/>
+    <partnerLink name="creditService"
+                 partnerLinkType="tns:CreditCheckLT"
+                 partnerRole="creditChecker"/>
+    <partnerLink name="riskService"
+                 partnerLinkType="tns:RiskAssessLT"
+                 partnerRole="riskAssessor"/>
+  </partnerLinks>
+
+  <variables>
+    <variable name="loanRequest"   messageType="tns:LoanRequestMessage"/>
+    <variable name="loanResponse"  messageType="tns:LoanResponseMessage"/>
+    <variable name="creditScore"   messageType="tns:CreditScoreMessage"/>
+    <variable name="riskResult"    messageType="tns:RiskResultMessage"/>
+    <variable name="faultDetail"   messageType="tns:FaultMessage"/>
+  </variables>
+
+  <correlationSets>
+    <correlationSet name="loanCorrelation" properties="tns:loanId"/>
+  </correlationSets>
+
+  <faultHandlers>
+    <catch faultName="tns:CreditCheckFault" faultVariable="faultDetail" faultMessageType="tns:FaultMessage">
+      <sequence>
+        <assign name="SetRejectionReason">
+          <copy>
+            <from>$faultDetail.reason</from>
+            <to variable="loanResponse" part="status"/>
+          </copy>
+        </assign>
+        <reply name="ReplyWithFault" partnerLink="client" operation="approveLoan"
+               variable="loanResponse" faultName="tns:LoanDeniedFault"/>
+      </sequence>
+    </catch>
+    <catchAll>
+      <sequence>
+        <throw name="RethrowGeneric" faultName="tns:UnexpectedFault"/>
+      </sequence>
+    </catchAll>
+  </faultHandlers>
+
+  <compensationHandler>
+    <sequence>
+      <invoke name="RollbackCredit" partnerLink="creditService"
+              operation="rollback" inputVariable="creditScore"/>
+    </sequence>
+  </compensationHandler>
+
+  <sequence name="MainFlow">
+
+    <receive name="ReceiveLoanRequest"
+             partnerLink="client"
+             operation="approveLoan"
+             variable="loanRequest"
+             createInstance="yes"/>
+
+    <!-- IBM WPS extension: human task -->
+    <bpelx:task name="ManagerReview"
+                taskType="HUMAN_TASK"
+                staffQuery="role:LoanManager"
+                potentialOwners="cn=managers,ou=groups"/>
+
+    <flow name="ParallelChecks">
+      <links>
+        <link name="creditToDone"/>
+        <link name="riskToDone"/>
+      </links>
+
+      <invoke name="CheckCredit"
+              partnerLink="creditService"
+              operation="checkCredit"
+              inputVariable="loanRequest"
+              outputVariable="creditScore"/>
+
+      <invoke name="AssessRisk"
+              partnerLink="riskService"
+              operation="assessRisk"
+              inputVariable="loanRequest"
+              outputVariable="riskResult"/>
+    </flow>
+
+    <if name="CreditDecision">
+      <condition>$creditScore.score &gt; 650 and $riskResult.level = 'LOW'</condition>
+      <sequence>
+        <assign name="SetApproved">
+          <copy>
+            <from>'APPROVED'</from>
+            <to variable="loanResponse" part="status"/>
+          </copy>
+        </assign>
+      </sequence>
+      <elseif>
+        <condition>$creditScore.score &gt; 500</condition>
+        <sequence>
+          <assign name="SetReview">
+            <copy>
+              <from>'MANUAL_REVIEW'</from>
+              <to variable="loanResponse" part="status"/>
+            </copy>
+          </assign>
+        </sequence>
+      </elseif>
+      <else>
+        <sequence>
+          <assign name="SetDenied">
+            <copy>
+              <from>'DENIED'</from>
+              <to variable="loanResponse" part="status"/>
+            </copy>
+          </assign>
+        </sequence>
+      </else>
+    </if>
+
+    <scope name="NotificationScope">
+      <faultHandlers>
+        <catchAll>
+          <empty name="IgnoreNotificationFailure"/>
+        </catchAll>
+      </faultHandlers>
+      <compensationHandler>
+        <invoke name="CancelNotification" partnerLink="client"
+                operation="cancelNotification" inputVariable="loanResponse"/>
+      </compensationHandler>
+      <invoke name="SendNotification" partnerLink="client"
+              operation="notify" inputVariable="loanResponse"/>
+    </scope>
+
+    <wait name="WaitForDocument">
+      <for>'PT24H'</for>
+    </wait>
+
+    <reply name="ReplyToClient"
+           partnerLink="client"
+           operation="approveLoan"
+           variable="loanResponse"/>
+
+  </sequence>
+
+</process>

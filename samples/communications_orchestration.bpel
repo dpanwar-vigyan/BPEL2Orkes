@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Customer Communications Orchestration Process
+  Mirrors patterns from IBM WPS implementations at Australian/APAC banks.
+
+  Orchestrates multi-channel outbound comms: SMS, Email, Post (print-and-mail).
+  Used for: statements, credit limit change notifications, rate change letters,
+  hardship acknowledgements, collections notices.
+
+  Flow:
+    1. Receive comms request with customer preferences + channel priority
+    2. Look up customer's current contact details and suppression flags (DNC, hardship)
+    3. forEach over ordered channel list — try each channel in priority order
+    4. Per channel: route to SMS gateway / email platform / print-and-mail vendor
+    5. Wait for delivery confirmation (async callback via pick)
+    6. On channel failure: compensate and try next channel
+    7. Update CRM with delivery outcome
+    8. Audit trail for ASIC/APRA compliance
+
+  IBM WPS specifics:
+    - bpelx:task for exceptions requiring manual override (suppressed customer)
+    - Compensation chains per channel attempt
+    - Correlation across async delivery callbacks
+-->
+<process name="CommunicationsOrchestrationProcess"
+         targetNamespace="http://bank.example.com/comms/orchestration/v3"
+         xmlns="http://docs.oasis-open.org/wsbpel/2.0/process/executable"
+         xmlns:bpelx="http://www.ibm.com/xmlns/prod/websphere/business-process/6.0.0"
+         xmlns:tns="http://bank.example.com/comms/orchestration/v3"
+         suppressJoinFailure="yes"
+         expressionLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0"
+         queryLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0">
+
+  <partnerLinks>
+    <!-- Originating system: CRM, collections platform, product system -->
+    <partnerLink name="commsRequester"
+                 partnerLinkType="tns:CommsRequesterLT"
+                 myRole="commsOrchestrator"/>
+
+    <!-- Customer master / contact detail service -->
+    <partnerLink name="customerMaster"
+                 partnerLinkType="tns:CustomerMasterLT"
+                 partnerRole="customerDataProvider"/>
+
+    <!-- Twilio / MessageMedia SMS gateway -->
+    <partnerLink name="smsGateway"
+                 partnerLinkType="tns:SMSGatewayLT"
+                 partnerRole="smsProvider"/>
+
+    <!-- Salesforce Marketing Cloud / internal email relay -->
+    <partnerLink name="emailPlatform"
+                 partnerLinkType="tns:EmailPlatformLT"
+                 partnerRole="emailProvider"/>
+
+    <!-- Fuji Xerox / Salmat print-and-mail vendor -->
+    <partnerLink name="printVendor"
+                 partnerLinkType="tns:PrintVendorLT"
+                 partnerRole="printProvider"/>
+
+    <!-- CRM — write delivery outcome -->
+    <partnerLink name="crmSystem"
+                 partnerLinkType="tns:CRMSystemLT"
+                 partnerRole="crmWriter"/>
+
+    <!-- Suppression / Do Not Contact registry -->
+    <partnerLink name="suppressionRegistry"
+                 partnerLinkType="tns:SuppressionRegistryLT"
+                 partnerRole="suppressionChecker"/>
+
+    <!-- Compliance audit bus -->
+    <partnerLink name="auditBus"
+                 partnerLinkType="tns:AuditBusLT"
+                 partnerRole="auditSink"/>
+  </partnerLinks>
+
+  <variables>
+    <variable name="commsRequest"          messageType="tns:CommsRequestMsg"/>
+    <variable name="commsResponse"         messageType="tns:CommsResponseMsg"/>
+    <variable name="contactDetails"        messageType="tns:ContactDetailsMsg"/>
+    <variable name="suppressionResult"     messageType="tns:SuppressionResultMsg"/>
+
+    <!-- Per-channel send/response variables -->
+    <variable name="smsSendRequest"        messageType="tns:SMSSendRequestMsg"/>
+    <variable name="smsSendResponse"       messageType="tns:SMSSendResponseMsg"/>
+    <variable name="smsDeliveryCallback"   messageType="tns:SMSDeliveryCallbackMsg"/>
+
+    <variable name="emailSendRequest"      messageType="tns:EmailSendRequestMsg"/>
+    <variable name="emailSendResponse"     messageType="tns:EmailSendResponseMsg"/>
+    <variable name="emailDeliveryCallback" messageType="tns:EmailDeliveryCallbackMsg"/>
+
+    <variable name="printJobRequest"       messageType="tns:PrintJobRequestMsg"/>
+    <variable name="printJobResponse"      messageType="tns:PrintJobResponseMsg"/>
+    <variable name="printConfirmCallback"  messageType="tns:PrintConfirmCallbackMsg"/>
+
+    <variable name="crmUpdateRequest"      messageType="tns:CRMUpdateRequestMsg"/>
+    <variable name="auditEvent"            messageType="tns:AuditEventMsg"/>
+    <variable name="faultInfo"             messageType="tns:CommsFaultMsg"/>
+
+    <!-- Loop control -->
+    <variable name="channelIndex"          type="xsd:integer"/>
+    <variable name="deliveryAchieved"      type="xsd:boolean"/>
+    <variable name="currentChannel"        type="xsd:string"/>
+    <variable name="humanOverrideDecision" messageType="tns:HumanOverrideMsg"/>
+  </variables>
+
+  <correlationSets>
+    <correlationSet name="commsJobCorr"   properties="tns:commsJobId"/>
+    <correlationSet name="customerCorr"   properties="tns:customerId"/>
+    <correlationSet name="smsCallbackCorr"   properties="tns:smsMessageId"/>
+    <correlationSet name="emailCallbackCorr" properties="tns:emailMessageId"/>
+    <correlationSet name="printCallbackCorr" properties="tns:printJobId"/>
+  </correlationSets>
+
+  <faultHandlers>
+    <catch faultName="tns:AllChannelsExhausted" faultVariable="faultInfo"
+           faultMessageType="tns:CommsFaultMsg">
+      <sequence name="HandleExhaustedChannels">
+        <assign name="SetUndeliverable">
+          <copy>
+            <from>'UNDELIVERABLE'</from>
+            <to variable="commsResponse" part="deliveryStatus"/>
+          </copy>
+        </assign>
+        <!-- Escalate to ops team for manual intervention -->
+        <bpelx:task name="ManualDeliveryEscalation"
+                    taskType="HUMAN_TASK"
+                    staffQuery="role:CommsOpsTeam"
+                    priority="1"
+                    durationExpression="'PT1H'"/>
+        <invoke name="AuditUndeliverable" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplyUndeliverable" partnerLink="commsRequester"
+               operation="sendCommunication" variable="commsResponse"/>
+      </sequence>
+    </catch>
+    <catchAll>
+      <sequence name="HandleGenericFault">
+        <assign name="SetFaultStatus">
+          <copy>
+            <from>'SYSTEM_FAULT'</from>
+            <to variable="commsResponse" part="deliveryStatus"/>
+          </copy>
+        </assign>
+        <invoke name="AuditFault" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplyFault" partnerLink="commsRequester"
+               operation="sendCommunication" variable="commsResponse"/>
+      </sequence>
+    </catchAll>
+  </faultHandlers>
+
+  <sequence name="CommsOrchestrationMain">
+
+    <!-- Step 1: Receive comms dispatch request -->
+    <receive name="ReceiveCommsRequest"
+             partnerLink="commsRequester"
+             operation="sendCommunication"
+             variable="commsRequest"
+             createInstance="yes"/>
+
+    <!-- Step 2: Parallel — fetch contact details and check suppression -->
+    <flow name="ContactAndSuppressionCheck">
+      <invoke name="GetContactDetails"
+              partnerLink="customerMaster"
+              operation="getContactDetails"
+              inputVariable="commsRequest"
+              outputVariable="contactDetails"/>
+      <invoke name="CheckSuppressionFlags"
+              partnerLink="suppressionRegistry"
+              operation="checkSuppression"
+              inputVariable="commsRequest"
+              outputVariable="suppressionResult"/>
+    </flow>
+
+    <!-- Step 3: Suppression gate -->
+    <if name="SuppressionCheck">
+      <condition>
+        $suppressionResult.doNotContact = 'true'
+        or $suppressionResult.hardshipSuppression = 'true'
+      </condition>
+      <sequence name="SuppressionOverridePath">
+        <!-- Certain comms types (legal notices, hardship ack) MUST go through
+             even if DNC — requires human authorisation -->
+        <if name="IsMandatoryCommsType">
+          <condition>
+            $commsRequest.commsCategory = 'LEGAL_NOTICE'
+            or $commsRequest.commsCategory = 'HARDSHIP_ACKNOWLEDGEMENT'
+          </condition>
+          <sequence>
+            <bpelx:task name="MandatoryCommsAuthorisation"
+                        taskType="HUMAN_TASK"
+                        staffQuery="role:ComplianceOfficer"
+                        potentialOwners="cn=compliance,ou=groups,dc=bank,dc=com"
+                        priority="1"
+                        durationExpression="'PT30M'">
+              <bpelx:input  variable="commsRequest"/>
+              <bpelx:input  variable="suppressionResult"/>
+              <bpelx:output variable="humanOverrideDecision"/>
+            </bpelx:task>
+            <if name="OverrideApproved">
+              <condition>$humanOverrideDecision.decision = 'APPROVED'</condition>
+              <!-- Approved: continue to channel dispatch below (fall through) -->
+              <empty name="ContinueAfterOverride"/>
+              <else>
+                <sequence>
+                  <assign name="SetSuppressedStatus">
+                    <copy>
+                      <from>'SUPPRESSED_OVERRIDE_DENIED'</from>
+                      <to variable="commsResponse" part="deliveryStatus"/>
+                    </copy>
+                  </assign>
+                  <reply name="ReplySuppressionDenied" partnerLink="commsRequester"
+                         operation="sendCommunication" variable="commsResponse"/>
+                  <exit name="TerminateProcess"/>
+                </sequence>
+              </else>
+            </if>
+          </sequence>
+          <else>
+            <!-- Non-mandatory + suppressed: silently suppress, audit and exit -->
+            <sequence>
+              <assign name="SetSuppressedSilent">
+                <copy>
+                  <from>'SUPPRESSED'</from>
+                  <to variable="commsResponse" part="deliveryStatus"/>
+                </copy>
+              </assign>
+              <invoke name="AuditSuppression" partnerLink="auditBus"
+                      operation="publishEvent" inputVariable="auditEvent"/>
+              <reply name="ReplySuppressed" partnerLink="commsRequester"
+                     operation="sendCommunication" variable="commsResponse"/>
+              <exit name="TerminateSuppressed"/>
+            </sequence>
+          </else>
+        </if>
+      </sequence>
+    </if>
+
+    <!-- Step 4: Initialise delivery state -->
+    <assign name="InitDeliveryState">
+      <copy>
+        <from>false()</from>
+        <to variable="deliveryAchieved"/>
+      </copy>
+    </assign>
+
+    <!-- Step 5: SMS channel scope -->
+    <scope name="SMSChannelScope">
+      <faultHandlers>
+        <catch faultName="tns:SMSDeliveryFailed">
+          <!-- SMS failed — fall through to email -->
+          <assign name="LogSMSFailure">
+            <copy>
+              <from>'SMS_FAILED'</from>
+              <to variable="auditEvent" part="eventType"/>
+            </copy>
+          </assign>
+        </catch>
+        <catch faultName="tns:InvalidMobileNumber">
+          <empty name="SkipSMS"/>
+        </catch>
+      </faultHandlers>
+      <compensationHandler>
+        <!-- If downstream scope fails, notify SMS gateway to cancel if still queued -->
+        <invoke name="CancelSMSIfQueued" partnerLink="smsGateway"
+                operation="cancelMessage" inputVariable="smsSendRequest"/>
+      </compensationHandler>
+
+      <if name="SMSChannelAvailable">
+        <condition>
+          $contactDetails.mobileNumber != ''
+          and $suppressionResult.smsSuppressed = 'false'
+          and $commsRequest.channelPreferences/sms/enabled = 'true'
+        </condition>
+        <sequence name="DispatchSMS">
+          <assign name="BuildSMSRequest">
+            <copy>
+              <from>$contactDetails.mobileNumber</from>
+              <to variable="smsSendRequest" part="toNumber"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.smsTemplate/body</from>
+              <to variable="smsSendRequest" part="messageBody"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.commsJobId</from>
+              <to variable="smsSendRequest" part="correlationId"/>
+            </copy>
+          </assign>
+          <invoke name="SendSMS" partnerLink="smsGateway"
+                  operation="sendSMS" inputVariable="smsSendRequest"
+                  outputVariable="smsSendResponse"/>
+          <!-- Async: wait for delivery receipt, timeout after 10 minutes -->
+          <pick name="WaitForSMSDelivery">
+            <onMessage partnerLink="smsGateway" operation="smsDeliveryCallback"
+                       variable="smsDeliveryCallback">
+              <if name="SMSDelivered">
+                <condition>$smsDeliveryCallback.status = 'DELIVERED'</condition>
+                <assign name="MarkSMSDelivered">
+                  <copy>
+                    <from>true()</from>
+                    <to variable="deliveryAchieved"/>
+                  </copy>
+                  <copy>
+                    <from>'SMS'</from>
+                    <to variable="commsResponse" part="deliveredChannel"/>
+                  </copy>
+                </assign>
+                <else>
+                  <throw name="ThrowSMSFailed" faultName="tns:SMSDeliveryFailed"/>
+                </else>
+              </if>
+            </onMessage>
+            <onAlarm>
+              <for>'PT10M'</for>
+              <throw name="ThrowSMSTimeout" faultName="tns:SMSDeliveryFailed"/>
+            </onAlarm>
+          </pick>
+        </sequence>
+        <else>
+          <empty name="SMSNotAvailable"/>
+        </else>
+      </if>
+    </scope>
+
+    <!-- Step 6: Email channel scope (if SMS didn't succeed) -->
+    <scope name="EmailChannelScope">
+      <faultHandlers>
+        <catch faultName="tns:EmailDeliveryFailed">
+          <assign name="LogEmailFailure">
+            <copy>
+              <from>'EMAIL_FAILED'</from>
+              <to variable="auditEvent" part="eventType"/>
+            </copy>
+          </assign>
+        </catch>
+        <catch faultName="tns:InvalidEmailAddress">
+          <empty name="SkipEmail"/>
+        </catch>
+      </faultHandlers>
+      <compensationHandler>
+        <invoke name="CancelEmailIfQueued" partnerLink="emailPlatform"
+                operation="cancelEmail" inputVariable="emailSendRequest"/>
+      </compensationHandler>
+
+      <if name="EmailChannelAvailable">
+        <condition>
+          $deliveryAchieved = false()
+          and $contactDetails.emailAddress != ''
+          and $suppressionResult.emailSuppressed = 'false'
+          and $commsRequest.channelPreferences/email/enabled = 'true'
+        </condition>
+        <sequence name="DispatchEmail">
+          <assign name="BuildEmailRequest">
+            <copy>
+              <from>$contactDetails.emailAddress</from>
+              <to variable="emailSendRequest" part="toAddress"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.emailTemplate/subject</from>
+              <to variable="emailSendRequest" part="subject"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.emailTemplate/htmlBody</from>
+              <to variable="emailSendRequest" part="htmlBody"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.commsJobId</from>
+              <to variable="emailSendRequest" part="correlationId"/>
+            </copy>
+          </assign>
+          <invoke name="SendEmail" partnerLink="emailPlatform"
+                  operation="sendEmail" inputVariable="emailSendRequest"
+                  outputVariable="emailSendResponse"/>
+          <pick name="WaitForEmailDelivery">
+            <onMessage partnerLink="emailPlatform" operation="emailDeliveryCallback"
+                       variable="emailDeliveryCallback">
+              <if name="EmailDelivered">
+                <condition>
+                  $emailDeliveryCallback.status = 'DELIVERED'
+                  or $emailDeliveryCallback.status = 'OPENED'
+                </condition>
+                <assign name="MarkEmailDelivered">
+                  <copy>
+                    <from>true()</from>
+                    <to variable="deliveryAchieved"/>
+                  </copy>
+                  <copy>
+                    <from>'EMAIL'</from>
+                    <to variable="commsResponse" part="deliveredChannel"/>
+                  </copy>
+                </assign>
+                <else>
+                  <throw name="ThrowEmailFailed" faultName="tns:EmailDeliveryFailed"/>
+                </else>
+              </if>
+            </onMessage>
+            <onAlarm>
+              <for>'PT30M'</for>
+              <throw name="ThrowEmailTimeout" faultName="tns:EmailDeliveryFailed"/>
+            </onAlarm>
+          </pick>
+        </sequence>
+        <else>
+          <empty name="EmailNotApplicable"/>
+        </else>
+      </if>
+    </scope>
+
+    <!-- Step 7: Print and mail fallback (always succeeds if dispatched) -->
+    <scope name="PostChannelScope">
+      <faultHandlers>
+        <catch faultName="tns:PrintVendorUnavailable">
+          <throw name="EscalatePrintFailure" faultName="tns:AllChannelsExhausted"/>
+        </catch>
+      </faultHandlers>
+      <compensationHandler>
+        <invoke name="CancelPrintJob" partnerLink="printVendor"
+                operation="cancelJob" inputVariable="printJobRequest"/>
+      </compensationHandler>
+
+      <if name="PostChannelRequired">
+        <condition>
+          $deliveryAchieved = false()
+          or $commsRequest.channelPreferences/post/mandatory = 'true'
+        </condition>
+        <sequence name="DispatchPrintMail">
+          <assign name="BuildPrintRequest">
+            <copy>
+              <from>$contactDetails.postalAddress</from>
+              <to variable="printJobRequest" part="deliveryAddress"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.letterTemplate</from>
+              <to variable="printJobRequest" part="templateReference"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.commsJobId</from>
+              <to variable="printJobRequest" part="jobReference"/>
+            </copy>
+            <copy>
+              <from>$commsRequest.printClass</from>
+              <to variable="printJobRequest" part="postageClass"/>
+            </copy>
+          </assign>
+          <invoke name="SubmitPrintJob" partnerLink="printVendor"
+                  operation="submitPrintJob" inputVariable="printJobRequest"
+                  outputVariable="printJobResponse"/>
+          <!-- Print vendor confirms job accepted (lodgement confirmation) -->
+          <pick name="WaitForPrintConfirmation">
+            <onMessage partnerLink="printVendor" operation="printJobCallback"
+                       variable="printConfirmCallback">
+              <assign name="MarkPostDispatched">
+                <copy>
+                  <from>true()</from>
+                  <to variable="deliveryAchieved"/>
+                </copy>
+                <copy>
+                  <from>'POST'</from>
+                  <to variable="commsResponse" part="deliveredChannel"/>
+                </copy>
+                <copy>
+                  <from>$printConfirmCallback.estimatedDeliveryDate</from>
+                  <to variable="commsResponse" part="estimatedDeliveryDate"/>
+                </copy>
+              </assign>
+            </onMessage>
+            <onAlarm>
+              <for>'PT4H'</for>
+              <throw name="ThrowPrintTimeout" faultName="tns:PrintVendorUnavailable"/>
+            </onAlarm>
+          </pick>
+        </sequence>
+      </if>
+    </scope>
+
+    <!-- Step 8: Update CRM with delivery outcome -->
+    <assign name="BuildCRMUpdate">
+      <copy>
+        <from>$commsRequest.customerId</from>
+        <to variable="crmUpdateRequest" part="customerId"/>
+      </copy>
+      <copy>
+        <from>$commsRequest.commsJobId</from>
+        <to variable="crmUpdateRequest" part="commsJobId"/>
+      </copy>
+      <copy>
+        <from>$commsResponse.deliveredChannel</from>
+        <to variable="crmUpdateRequest" part="deliveryChannel"/>
+      </copy>
+      <copy>
+        <from>$commsRequest.commsCategory</from>
+        <to variable="crmUpdateRequest" part="commsCategory"/>
+      </copy>
+    </assign>
+    <invoke name="UpdateCRM" partnerLink="crmSystem"
+            operation="recordCommEvent" inputVariable="crmUpdateRequest"/>
+
+    <!-- Step 9: Compliance audit — ASIC/APRA requires proof of dispatch -->
+    <assign name="BuildComplianceAudit">
+      <copy>
+        <from>'COMMUNICATION_DISPATCHED'</from>
+        <to variable="auditEvent" part="eventType"/>
+      </copy>
+      <copy>
+        <from>$commsResponse.deliveredChannel</from>
+        <to variable="auditEvent" part="channel"/>
+      </copy>
+      <copy>
+        <from>$commsRequest.commsJobId</from>
+        <to variable="auditEvent" part="referenceId"/>
+      </copy>
+    </assign>
+    <invoke name="PublishComplianceAudit" partnerLink="auditBus"
+            operation="publishEvent" inputVariable="auditEvent"/>
+
+    <!-- Step 10: Reply to requester -->
+    <assign name="FinaliseResponse">
+      <copy>
+        <from>'DELIVERED'</from>
+        <to variable="commsResponse" part="deliveryStatus"/>
+      </copy>
+    </assign>
+    <reply name="ReplyDelivered" partnerLink="commsRequester"
+           operation="sendCommunication" variable="commsResponse"/>
+
+  </sequence>
+
+</process>

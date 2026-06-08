@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Credit Card Provisioning Process
+  Mirrors patterns from IBM WPS/BAW implementations at Australian/APAC banks.
+
+  This process triggers AFTER credit assessment and human valuation are complete
+  (those live in BPMN/BAW). By the time this BPEL process starts, the application
+  has APPROVED status and a credit limit has been set.
+
+  Flow:
+    1. Receive provisioning trigger from BAW (includes approved limit, product code)
+    2. Reserve card number range from card number bureau (Visa/MC scheme)
+    3. Parallel: create core banking account + register with card scheme (Visa/MC)
+    4. IBM human task: fraud ops reviews high-value / high-risk cards before embossing
+    5. Emboss request to card personalisation vendor (Datacard / Entrust)
+    6. Wait for embossing complete callback — then dispatch to Australia Post
+    7. Parallel: activate digital wallet tokens (Apple Pay / Google Pay)
+    8. Send welcome SMS + email (invoke comms orchestration sub-process)
+    9. Notify originating BAW process (async reply)
+
+  IBM WPS specifics:
+    - bpelx:task for fraud ops review
+    - bpelx:callBusinessRule for card product routing
+    - Compensation chains for scheme rollback if embossing fails
+    - Multiple async pick patterns for scheme + vendor callbacks
+-->
+<process name="CreditCardProvisioningProcess"
+         targetNamespace="http://bank.example.com/cards/provisioning/v4"
+         xmlns="http://docs.oasis-open.org/wsbpel/2.0/process/executable"
+         xmlns:bpelx="http://www.ibm.com/xmlns/prod/websphere/business-process/6.0.0"
+         xmlns:tns="http://bank.example.com/cards/provisioning/v4"
+         xmlns:cards="http://bank.example.com/cards/common/v2"
+         suppressJoinFailure="yes"
+         expressionLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0"
+         queryLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0">
+
+  <partnerLinks>
+    <!-- BAW process that triggers provisioning and awaits completion -->
+    <partnerLink name="bawOrchestrator"
+                 partnerLinkType="tns:BAWOrchestratorLT"
+                 myRole="cardProvisioner"/>
+
+    <!-- Card number bureau — reserve BIN range -->
+    <partnerLink name="cardNumberBureau"
+                 partnerLinkType="tns:CardNumberBureauLT"
+                 partnerRole="bureauService"/>
+
+    <!-- Core banking — open credit account -->
+    <partnerLink name="coreBanking"
+                 partnerLinkType="tns:CoreBankingLT"
+                 partnerRole="coreSystem"/>
+
+    <!-- Visa / Mastercard scheme connectivity (VNet / BankNet) -->
+    <partnerLink name="cardScheme"
+                 partnerLinkType="tns:CardSchemeLT"
+                 partnerRole="schemeConnector"/>
+
+    <!-- Datacard / Entrust card personalisation and embossing vendor -->
+    <partnerLink name="embossingVendor"
+                 partnerLinkType="tns:EmbossingVendorLT"
+                 partnerRole="embosser"/>
+
+    <!-- Apple Pay / Google Pay token requestor service -->
+    <partnerLink name="walletTokenService"
+                 partnerLinkType="tns:WalletTokenServiceLT"
+                 partnerRole="tokenProvider"/>
+
+    <!-- Australia Post tracked dispatch -->
+    <partnerLink name="cardDispatch"
+                 partnerLinkType="tns:CardDispatchLT"
+                 partnerRole="dispatchService"/>
+
+    <!-- Comms orchestration sub-process (invoke communications_orchestration) -->
+    <partnerLink name="commsOrchestration"
+                 partnerLinkType="tns:CommsOrchestrationLT"
+                 partnerRole="commsService"/>
+
+    <!-- Fraud operations platform -->
+    <partnerLink name="fraudOps"
+                 partnerLinkType="tns:FraudOpsLT"
+                 partnerRole="fraudPlatform"/>
+
+    <!-- IBM ODM rule engine for product routing -->
+    <partnerLink name="ruleEngine"
+                 partnerLinkType="tns:RuleEngineLT"
+                 partnerRole="odmServer"/>
+
+    <!-- Audit / compliance -->
+    <partnerLink name="auditBus"
+                 partnerLinkType="tns:AuditBusLT"
+                 partnerRole="auditSink"/>
+  </partnerLinks>
+
+  <variables>
+    <variable name="provisioningRequest"    messageType="tns:ProvisioningRequestMsg"/>
+    <variable name="provisioningResponse"   messageType="tns:ProvisioningResponseMsg"/>
+
+    <!-- Card number reservation -->
+    <variable name="cardNumberRequest"      messageType="tns:CardNumberRequestMsg"/>
+    <variable name="cardNumberResponse"     messageType="tns:CardNumberResponseMsg"/>
+
+    <!-- Core banking -->
+    <variable name="accountCreateRequest"   messageType="tns:AccountCreateRequestMsg"/>
+    <variable name="accountCreateResponse"  messageType="tns:AccountCreateResponseMsg"/>
+
+    <!-- Card scheme registration -->
+    <variable name="schemeRegRequest"       messageType="tns:SchemeRegRequestMsg"/>
+    <variable name="schemeRegResponse"      messageType="tns:SchemeRegResponseMsg"/>
+    <variable name="schemeCallback"         messageType="tns:SchemeCallbackMsg"/>
+
+    <!-- Embossing -->
+    <variable name="embossRequest"          messageType="tns:EmbossRequestMsg"/>
+    <variable name="embossResponse"         messageType="tns:EmbossResponseMsg"/>
+    <variable name="embossCallback"         messageType="tns:EmbossCallbackMsg"/>
+
+    <!-- Digital wallets -->
+    <variable name="applePayRequest"        messageType="tns:WalletTokenRequestMsg"/>
+    <variable name="applePayResponse"       messageType="tns:WalletTokenResponseMsg"/>
+    <variable name="googlePayRequest"       messageType="tns:WalletTokenRequestMsg"/>
+    <variable name="googlePayResponse"      messageType="tns:WalletTokenResponseMsg"/>
+
+    <!-- Dispatch -->
+    <variable name="dispatchRequest"        messageType="tns:DispatchRequestMsg"/>
+    <variable name="dispatchResponse"       messageType="tns:DispatchResponseMsg"/>
+
+    <!-- Comms -->
+    <variable name="welcomeCommsRequest"    messageType="tns:CommsRequestMsg"/>
+    <variable name="welcomeCommsResponse"   messageType="tns:CommsResponseMsg"/>
+
+    <!-- Fraud review -->
+    <variable name="fraudScreenRequest"     messageType="tns:FraudScreenRequestMsg"/>
+    <variable name="fraudScreenResponse"    messageType="tns:FraudScreenResponseMsg"/>
+    <variable name="fraudOpsDecision"       messageType="tns:FraudOpsDecisionMsg"/>
+
+    <!-- Rule routing -->
+    <variable name="productRoutingRequest"  messageType="tns:ProductRoutingRequestMsg"/>
+    <variable name="productRoutingResponse" messageType="tns:ProductRoutingResponseMsg"/>
+
+    <variable name="auditEvent"             messageType="tns:AuditEventMsg"/>
+    <variable name="faultInfo"              messageType="tns:ProvisioningFaultMsg"/>
+    <variable name="requiresFraudReview"    type="xsd:boolean"/>
+  </variables>
+
+  <correlationSets>
+    <correlationSet name="provisioningCorr"  properties="tns:provisioningJobId"/>
+    <correlationSet name="applicationCorr"   properties="tns:applicationId"/>
+    <correlationSet name="schemeCallbackCorr"  properties="tns:schemeReferenceId"/>
+    <correlationSet name="embossCallbackCorr"  properties="tns:embossJobId"/>
+  </correlationSets>
+
+  <faultHandlers>
+    <catch faultName="tns:SchemeRegistrationFailed" faultVariable="faultInfo"
+           faultMessageType="tns:ProvisioningFaultMsg">
+      <sequence name="HandleSchemeFault">
+        <!-- Must roll back core banking account if scheme reg fails -->
+        <compensate name="CompensateCoreAccount"/>
+        <compensate name="CompensateCardNumber"/>
+        <assign name="SetSchemeFailStatus">
+          <copy>
+            <from>'SCHEME_REGISTRATION_FAILED'</from>
+            <to variable="provisioningResponse" part="provisioningStatus"/>
+          </copy>
+          <copy>
+            <from>$faultInfo.schemeErrorCode</from>
+            <to variable="provisioningResponse" part="failureCode"/>
+          </copy>
+        </assign>
+        <invoke name="AuditSchemeFault" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplySchemeFailure" partnerLink="bawOrchestrator"
+               operation="provisionCard" variable="provisioningResponse"/>
+      </sequence>
+    </catch>
+
+    <catch faultName="tns:EmbossingFailed" faultVariable="faultInfo"
+           faultMessageType="tns:ProvisioningFaultMsg">
+      <sequence name="HandleEmbossFault">
+        <!-- Embossing failed: de-register from scheme, close account, release number -->
+        <compensate name="CompensateSchemeRegistration"/>
+        <compensate name="CompensateCoreAccount"/>
+        <compensate name="CompensateCardNumber"/>
+        <assign name="SetEmbossFailStatus">
+          <copy>
+            <from>'EMBOSSING_FAILED'</from>
+            <to variable="provisioningResponse" part="provisioningStatus"/>
+          </copy>
+        </assign>
+        <!-- Notify BAW so it can re-queue or escalate -->
+        <invoke name="AuditEmbossFault" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplyEmbossFailure" partnerLink="bawOrchestrator"
+               operation="provisionCard" variable="provisioningResponse"/>
+      </sequence>
+    </catch>
+
+    <catchAll>
+      <sequence name="HandleUnexpectedFault">
+        <assign name="SetUnexpectedFaultStatus">
+          <copy>
+            <from>'UNEXPECTED_FAULT'</from>
+            <to variable="provisioningResponse" part="provisioningStatus"/>
+          </copy>
+        </assign>
+        <invoke name="AuditUnexpectedFault" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplyUnexpectedFault" partnerLink="bawOrchestrator"
+               operation="provisionCard" variable="provisioningResponse"/>
+      </sequence>
+    </catchAll>
+  </faultHandlers>
+
+  <sequence name="CardProvisioningMain">
+
+    <!-- Step 1: Receive provisioning trigger from BAW -->
+    <receive name="ReceiveProvisioningTrigger"
+             partnerLink="bawOrchestrator"
+             operation="provisionCard"
+             variable="provisioningRequest"
+             createInstance="yes"/>
+
+    <!-- Step 2: IBM ODM — determine card product routing (Visa vs MC, tier, BIN) -->
+    <assign name="PrepareProductRoutingRequest">
+      <copy>
+        <from>$provisioningRequest.productCode</from>
+        <to variable="productRoutingRequest" part="productCode"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.approvedCreditLimit</from>
+        <to variable="productRoutingRequest" part="creditLimit"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.customerSegment</from>
+        <to variable="productRoutingRequest" part="customerSegment"/>
+      </copy>
+    </assign>
+    <bpelx:callBusinessRule name="DetermineCardProductRouting"
+                            ruleAppName="CardProductionApp"
+                            ruleSetPath="/card-provisioning/v4/ProductRoutingRuleset"
+                            inputVariable="productRoutingRequest"
+                            outputVariable="productRoutingResponse"/>
+
+    <!-- Step 3: Reserve card number from BIN bureau -->
+    <scope name="CardNumberReservationScope">
+      <compensationHandler>
+        <invoke name="ReleaseCardNumber" partnerLink="cardNumberBureau"
+                operation="releaseCardNumber" inputVariable="cardNumberRequest"/>
+      </compensationHandler>
+      <sequence>
+        <assign name="PrepareCardNumberRequest">
+          <copy>
+            <from>$productRoutingResponse.binRange</from>
+            <to variable="cardNumberRequest" part="binRange"/>
+          </copy>
+          <copy>
+            <from>$productRoutingResponse.cardScheme</from>
+            <to variable="cardNumberRequest" part="scheme"/>
+          </copy>
+        </assign>
+        <invoke name="ReserveCardNumber" partnerLink="cardNumberBureau"
+                operation="reserveCardNumber" inputVariable="cardNumberRequest"
+                outputVariable="cardNumberResponse"/>
+      </sequence>
+    </scope>
+
+    <!-- Step 4: Fraud screen — high-limit or high-risk cards need ops review -->
+    <assign name="PrepareFraudScreen">
+      <copy>
+        <from>$provisioningRequest.customerId</from>
+        <to variable="fraudScreenRequest" part="customerId"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.approvedCreditLimit</from>
+        <to variable="fraudScreenRequest" part="creditLimit"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.applicationId</from>
+        <to variable="fraudScreenRequest" part="applicationId"/>
+      </copy>
+    </assign>
+    <invoke name="RunFraudScreen" partnerLink="fraudOps"
+            operation="screenNewCard" inputVariable="fraudScreenRequest"
+            outputVariable="fraudScreenResponse"/>
+
+    <assign name="EvalFraudScreenResult">
+      <copy>
+        <from>
+          $fraudScreenResponse.riskScore &gt; 75
+          or $provisioningRequest.approvedCreditLimit &gt; 50000
+          or $fraudScreenResponse.manualReviewRequired = 'true'
+        </from>
+        <to variable="requiresFraudReview"/>
+      </copy>
+    </assign>
+
+    <if name="FraudReviewGate">
+      <condition>$requiresFraudReview = true()</condition>
+      <sequence name="FraudOpsReview">
+        <bpelx:task name="FraudOpsCardReview"
+                    taskType="HUMAN_TASK"
+                    staffQuery="role:FraudOperationsAnalyst"
+                    potentialOwners="cn=fraud-ops,ou=groups,dc=bank,dc=com"
+                    priority="2"
+                    durationExpression="'PT4H'"
+                    escalationTarget="role:FraudOpsManager">
+          <bpelx:input  variable="provisioningRequest"/>
+          <bpelx:input  variable="fraudScreenResponse"/>
+          <bpelx:output variable="fraudOpsDecision"/>
+        </bpelx:task>
+        <if name="FraudOpsOutcome">
+          <condition>$fraudOpsDecision.decision = 'REJECT'</condition>
+          <sequence>
+            <compensate name="CompensateCardNumber"/>
+            <assign name="SetFraudRejected">
+              <copy>
+                <from>'FRAUD_REVIEW_REJECTED'</from>
+                <to variable="provisioningResponse" part="provisioningStatus"/>
+              </copy>
+            </assign>
+            <invoke name="AuditFraudRejection" partnerLink="auditBus"
+                    operation="publishEvent" inputVariable="auditEvent"/>
+            <reply name="ReplyFraudRejected" partnerLink="bawOrchestrator"
+                   operation="provisionCard" variable="provisioningResponse"/>
+            <exit name="TerminateOnFraudReject"/>
+          </sequence>
+        </if>
+      </sequence>
+    </if>
+
+    <!-- Step 5: Parallel — open core banking account + register with card scheme -->
+    <flow name="CoreAndSchemeSetup">
+      <links>
+        <link name="coreAccountReady"/>
+        <link name="schemeRegReady"/>
+      </links>
+
+      <!-- Branch A: Core banking account creation -->
+      <scope name="CoreAccountScope">
+        <compensationHandler>
+          <invoke name="CloseCoreBankingAccount" partnerLink="coreBanking"
+                  operation="closeAccount" inputVariable="accountCreateRequest"/>
+        </compensationHandler>
+        <sequence>
+          <assign name="PrepareAccountCreate">
+            <copy>
+              <from>$provisioningRequest.customerId</from>
+              <to variable="accountCreateRequest" part="customerId"/>
+            </copy>
+            <copy>
+              <from>$provisioningRequest.approvedCreditLimit</from>
+              <to variable="accountCreateRequest" part="creditLimit"/>
+            </copy>
+            <copy>
+              <from>$cardNumberResponse.pan</from>
+              <to variable="accountCreateRequest" part="pan"/>
+            </copy>
+            <copy>
+              <from>$productRoutingResponse.interestRate</from>
+              <to variable="accountCreateRequest" part="interestRate"/>
+            </copy>
+            <copy>
+              <from>$productRoutingResponse.productCode</from>
+              <to variable="accountCreateRequest" part="productCode"/>
+            </copy>
+          </assign>
+          <invoke name="CreateCoreBankingAccount" partnerLink="coreBanking"
+                  operation="openCreditAccount" inputVariable="accountCreateRequest"
+                  outputVariable="accountCreateResponse"/>
+        </sequence>
+      </scope>
+
+      <!-- Branch B: Card scheme registration (Visa VNet / MC BankNet) -->
+      <scope name="SchemeRegistrationScope">
+        <compensationHandler>
+          <invoke name="DeregisterFromScheme" partnerLink="cardScheme"
+                  operation="deregisterCard" inputVariable="schemeRegRequest"/>
+        </compensationHandler>
+        <faultHandlers>
+          <catch faultName="tns:SchemeConnectivityError">
+            <throw name="EscalateSchemeError" faultName="tns:SchemeRegistrationFailed"/>
+          </catch>
+        </faultHandlers>
+        <sequence>
+          <assign name="PrepareSchemeReg">
+            <copy>
+              <from>$cardNumberResponse.pan</from>
+              <to variable="schemeRegRequest" part="pan"/>
+            </copy>
+            <copy>
+              <from>$productRoutingResponse.cardScheme</from>
+              <to variable="schemeRegRequest" part="scheme"/>
+            </copy>
+            <copy>
+              <from>$provisioningRequest.approvedCreditLimit</from>
+              <to variable="schemeRegRequest" part="creditLimit"/>
+            </copy>
+            <copy>
+              <from>$cardNumberResponse.expiryDate</from>
+              <to variable="schemeRegRequest" part="expiryDate"/>
+            </copy>
+          </assign>
+          <invoke name="RegisterWithScheme" partnerLink="cardScheme"
+                  operation="registerCard" inputVariable="schemeRegRequest"
+                  outputVariable="schemeRegResponse"/>
+          <!-- Scheme registration is async — wait for scheme callback -->
+          <pick name="WaitForSchemeConfirmation">
+            <onMessage partnerLink="cardScheme" operation="schemeRegistrationCallback"
+                       variable="schemeCallback">
+              <if name="SchemeConfirmed">
+                <condition>$schemeCallback.registrationStatus = 'APPROVED'</condition>
+                <empty name="SchemeRegistrationConfirmed"/>
+                <else>
+                  <throw name="ThrowSchemeRejected" faultName="tns:SchemeRegistrationFailed"/>
+                </else>
+              </if>
+            </onMessage>
+            <onAlarm>
+              <for>'PT2H'</for>
+              <throw name="ThrowSchemeTimeout" faultName="tns:SchemeRegistrationFailed"/>
+            </onAlarm>
+          </pick>
+        </sequence>
+      </scope>
+
+    </flow>
+
+    <!-- Step 6: Submit embossing job to card personalisation vendor -->
+    <scope name="EmbossingScope">
+      <compensationHandler>
+        <invoke name="CancelEmbossJob" partnerLink="embossingVendor"
+                operation="cancelEmbossJob" inputVariable="embossRequest"/>
+      </compensationHandler>
+      <faultHandlers>
+        <catch faultName="tns:EmbossVendorRejected">
+          <throw name="EscalateEmbossError" faultName="tns:EmbossingFailed"/>
+        </catch>
+      </faultHandlers>
+      <sequence>
+        <assign name="PrepareEmbossRequest">
+          <copy>
+            <from>$cardNumberResponse.pan</from>
+            <to variable="embossRequest" part="pan"/>
+          </copy>
+          <copy>
+            <from>$cardNumberResponse.expiryDate</from>
+            <to variable="embossRequest" part="expiryDate"/>
+          </copy>
+          <copy>
+            <from>$provisioningRequest.customerFullName</from>
+            <to variable="embossRequest" part="cardholderName"/>
+          </copy>
+          <copy>
+            <from>$productRoutingResponse.cardDesignCode</from>
+            <to variable="embossRequest" part="cardDesign"/>
+          </copy>
+          <copy>
+            <from>$provisioningRequest.deliveryAddress</from>
+            <to variable="embossRequest" part="deliveryAddress"/>
+          </copy>
+        </assign>
+        <invoke name="SubmitEmbossJob" partnerLink="embossingVendor"
+                operation="submitEmbossJob" inputVariable="embossRequest"
+                outputVariable="embossResponse"/>
+        <!-- Wait for physical embossing completion before dispatch -->
+        <pick name="WaitForEmbossComplete">
+          <onMessage partnerLink="embossingVendor" operation="embossJobCallback"
+                     variable="embossCallback">
+            <if name="EmbossSucceeded">
+              <condition>$embossCallback.jobStatus = 'COMPLETED'</condition>
+              <empty name="EmbossComplete"/>
+              <else>
+                <throw name="ThrowEmbossFailed" faultName="tns:EmbossVendorRejected"/>
+              </else>
+            </if>
+          </onMessage>
+          <onAlarm>
+            <for>'PT48H'</for>
+            <throw name="ThrowEmbossTimeout" faultName="tns:EmbossingFailed"/>
+          </onAlarm>
+        </pick>
+      </sequence>
+    </scope>
+
+    <!-- Step 7: Dispatch card via Australia Post tracked -->
+    <assign name="PrepareDispatchRequest">
+      <copy>
+        <from>$embossCallback.embossJobId</from>
+        <to variable="dispatchRequest" part="embossJobId"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.deliveryAddress</from>
+        <to variable="dispatchRequest" part="deliveryAddress"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.customerId</from>
+        <to variable="dispatchRequest" part="customerId"/>
+      </copy>
+    </assign>
+    <invoke name="DispatchCard" partnerLink="cardDispatch"
+            operation="lodgeForDelivery" inputVariable="dispatchRequest"
+            outputVariable="dispatchResponse"/>
+
+    <!-- Step 8: Parallel — provision Apple Pay and Google Pay tokens -->
+    <flow name="DigitalWalletProvisioning">
+      <scope name="ApplePayScope">
+        <faultHandlers>
+          <!-- Wallet failures are non-critical — log and continue -->
+          <catchAll>
+            <assign name="LogApplePayFailure">
+              <copy>
+                <from>'APPLE_PAY_PROVISIONING_FAILED'</from>
+                <to variable="auditEvent" part="eventType"/>
+              </copy>
+            </assign>
+          </catchAll>
+        </faultHandlers>
+        <sequence>
+          <assign name="PrepareApplePayRequest">
+            <copy>
+              <from>$cardNumberResponse.pan</from>
+              <to variable="applePayRequest" part="pan"/>
+            </copy>
+            <copy>
+              <from>'APPLE_PAY'</from>
+              <to variable="applePayRequest" part="walletType"/>
+            </copy>
+            <copy>
+              <from>$accountCreateResponse.accountId</from>
+              <to variable="applePayRequest" part="accountId"/>
+            </copy>
+          </assign>
+          <invoke name="ProvisionApplePay" partnerLink="walletTokenService"
+                  operation="provisionToken" inputVariable="applePayRequest"
+                  outputVariable="applePayResponse"/>
+        </sequence>
+      </scope>
+
+      <scope name="GooglePayScope">
+        <faultHandlers>
+          <catchAll>
+            <assign name="LogGooglePayFailure">
+              <copy>
+                <from>'GOOGLE_PAY_PROVISIONING_FAILED'</from>
+                <to variable="auditEvent" part="eventType"/>
+              </copy>
+            </assign>
+          </catchAll>
+        </faultHandlers>
+        <sequence>
+          <assign name="PrepareGooglePayRequest">
+            <copy>
+              <from>$cardNumberResponse.pan</from>
+              <to variable="googlePayRequest" part="pan"/>
+            </copy>
+            <copy>
+              <from>'GOOGLE_PAY'</from>
+              <to variable="googlePayRequest" part="walletType"/>
+            </copy>
+            <copy>
+              <from>$accountCreateResponse.accountId</from>
+              <to variable="googlePayRequest" part="accountId"/>
+            </copy>
+          </assign>
+          <invoke name="ProvisionGooglePay" partnerLink="walletTokenService"
+                  operation="provisionToken" inputVariable="googlePayRequest"
+                  outputVariable="googlePayResponse"/>
+        </sequence>
+      </scope>
+    </flow>
+
+    <!-- Step 9: Invoke comms orchestration for welcome pack (SMS + email) -->
+    <assign name="BuildWelcomeCommsRequest">
+      <copy>
+        <from>$provisioningRequest.customerId</from>
+        <to variable="welcomeCommsRequest" part="customerId"/>
+      </copy>
+      <copy>
+        <from>'CARD_WELCOME'</from>
+        <to variable="welcomeCommsRequest" part="commsCategory"/>
+      </copy>
+      <copy>
+        <from>$dispatchResponse.trackingNumber</from>
+        <to variable="welcomeCommsRequest" part="trackingReference"/>
+      </copy>
+      <copy>
+        <from>$accountCreateResponse.accountId</from>
+        <to variable="welcomeCommsRequest" part="accountId"/>
+      </copy>
+    </assign>
+    <invoke name="SendWelcomeCommunication" partnerLink="commsOrchestration"
+            operation="sendCommunication" inputVariable="welcomeCommsRequest"
+            outputVariable="welcomeCommsResponse"/>
+
+    <!-- Step 10: Compliance audit -->
+    <assign name="BuildProvisioningAudit">
+      <copy>
+        <from>'CARD_PROVISIONED'</from>
+        <to variable="auditEvent" part="eventType"/>
+      </copy>
+      <copy>
+        <from>$provisioningRequest.applicationId</from>
+        <to variable="auditEvent" part="referenceId"/>
+      </copy>
+      <copy>
+        <from>$accountCreateResponse.accountId</from>
+        <to variable="auditEvent" part="accountId"/>
+      </copy>
+      <copy>
+        <from>$dispatchResponse.trackingNumber</from>
+        <to variable="auditEvent" part="trackingNumber"/>
+      </copy>
+    </assign>
+    <invoke name="PublishProvisioningAudit" partnerLink="auditBus"
+            operation="publishEvent" inputVariable="auditEvent"/>
+
+    <!-- Step 11: Reply to BAW orchestrator — provisioning complete -->
+    <assign name="BuildProvisioningResponse">
+      <copy>
+        <from>'PROVISIONED'</from>
+        <to variable="provisioningResponse" part="provisioningStatus"/>
+      </copy>
+      <copy>
+        <from>$accountCreateResponse.accountId</from>
+        <to variable="provisioningResponse" part="accountId"/>
+      </copy>
+      <copy>
+        <from>$dispatchResponse.trackingNumber</from>
+        <to variable="provisioningResponse" part="cardTrackingNumber"/>
+      </copy>
+      <copy>
+        <from>$dispatchResponse.estimatedDeliveryDate</from>
+        <to variable="provisioningResponse" part="estimatedDeliveryDate"/>
+      </copy>
+    </assign>
+    <reply name="ReplyProvisioningComplete" partnerLink="bawOrchestrator"
+           operation="provisionCard" variable="provisioningResponse"/>
+
+  </sequence>
+
+</process>

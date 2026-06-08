@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Income Verification Process
+  Mirrors patterns from IBM WPS implementations at Australian/APAC banks.
+
+  Flow:
+    1. Receive loan/mortgage application trigger
+    2. Parallel: hit payroll bureau (e.g. Equifax Workforce) + ATO tax portal
+    3. IBM human task: analyst reviews if bureaus return low-confidence
+    4. Business rule: PASS / REFER / DECLINE based on declared vs verified income
+    5. Persist result and reply to originating channel (branch / digital / broker)
+
+  IBM WPS specifics included:
+    - bpelx:task for human review gate
+    - bpelx:callBusinessRule for decisioning
+    - bpelx:eventHandlerActivity for timeout/SLA breach
+-->
+<process name="IncomeVerificationProcess"
+         targetNamespace="http://bank.example.com/lending/income-verification/v2"
+         xmlns="http://docs.oasis-open.org/wsbpel/2.0/process/executable"
+         xmlns:bpelx="http://www.ibm.com/xmlns/prod/websphere/business-process/6.0.0"
+         xmlns:tns="http://bank.example.com/lending/income-verification/v2"
+         xmlns:lend="http://bank.example.com/lending/common/v1"
+         suppressJoinFailure="yes"
+         expressionLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0"
+         queryLanguage="urn:oasis:names:tc:wsbpel:2.0:sublang:xpath1.0">
+
+  <partnerLinks>
+    <!-- Originating channel: branch, digital, broker portal -->
+    <partnerLink name="lendingChannel"
+                 partnerLinkType="tns:LendingChannelLT"
+                 myRole="incomeVerifier"/>
+
+    <!-- Equifax Workforce Solutions / payroll bureau -->
+    <partnerLink name="payrollBureau"
+                 partnerLinkType="tns:PayrollBureauLT"
+                 partnerRole="payrollProvider"/>
+
+    <!-- ATO SBR (Standard Business Reporting) gateway -->
+    <partnerLink name="taxPortal"
+                 partnerLinkType="tns:TaxPortalLT"
+                 partnerRole="atoGateway"/>
+
+    <!-- Bank's credit decisioning rule engine (ILOG/ODM) -->
+    <partnerLink name="ruleEngine"
+                 partnerLinkType="tns:RuleEngineLT"
+                 partnerRole="odmServer"/>
+
+    <!-- Core banking — persist verification result -->
+    <partnerLink name="coreBanking"
+                 partnerLinkType="tns:CoreBankingLT"
+                 partnerRole="coreSystem"/>
+
+    <!-- Audit/compliance event bus -->
+    <partnerLink name="auditBus"
+                 partnerLinkType="tns:AuditBusLT"
+                 partnerRole="auditSink"/>
+  </partnerLinks>
+
+  <variables>
+    <variable name="applicationRequest"   messageType="tns:ApplicationRequestMsg"/>
+    <variable name="applicationResponse"  messageType="tns:ApplicationResponseMsg"/>
+    <variable name="payrollRequest"       messageType="tns:PayrollVerifyRequestMsg"/>
+    <variable name="payrollResponse"      messageType="tns:PayrollVerifyResponseMsg"/>
+    <variable name="taxRequest"           messageType="tns:TaxVerifyRequestMsg"/>
+    <variable name="taxResponse"          messageType="tns:TaxVerifyResponseMsg"/>
+    <variable name="ruleRequest"          messageType="tns:IncomeRuleRequestMsg"/>
+    <variable name="ruleResponse"         messageType="tns:IncomeRuleResponseMsg"/>
+    <variable name="humanTaskOutput"      messageType="tns:HumanReviewOutputMsg"/>
+    <variable name="persistRequest"       messageType="tns:PersistVerificationMsg"/>
+    <variable name="auditEvent"           messageType="tns:AuditEventMsg"/>
+    <variable name="faultInfo"            messageType="tns:VerificationFaultMsg"/>
+    <variable name="confidenceThreshold"  type="xsd:decimal"/>
+  </variables>
+
+  <correlationSets>
+    <correlationSet name="applicationCorr" properties="tns:applicationId"/>
+    <correlationSet name="customerCorr"    properties="tns:customerId"/>
+  </correlationSets>
+
+  <faultHandlers>
+    <catch faultName="tns:PayrollBureauUnavailable" faultVariable="faultInfo"
+           faultMessageType="tns:VerificationFaultMsg">
+      <sequence name="HandlePayrollFault">
+        <assign name="MarkPayrollDegraded">
+          <copy>
+            <from>'DEGRADED_PAYROLL'</from>
+            <to variable="applicationResponse" part="verificationStatus"/>
+          </copy>
+          <copy>
+            <from>$faultInfo.faultMessage</from>
+            <to variable="applicationResponse" part="statusReason"/>
+          </copy>
+        </assign>
+        <invoke name="AuditPayrollFailure" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplyDegraded" partnerLink="lendingChannel"
+               operation="verifyIncome" variable="applicationResponse"/>
+      </sequence>
+    </catch>
+    <catch faultName="tns:ATOGatewayTimeout" faultVariable="faultInfo"
+           faultMessageType="tns:VerificationFaultMsg">
+      <sequence name="HandleATOTimeout">
+        <!-- ATO outage is common — proceed with payroll only, flag for manual review -->
+        <assign name="SetATOTimeoutFlag">
+          <copy>
+            <from>'true'</from>
+            <to variable="ruleRequest" part="atoUnavailable"/>
+          </copy>
+        </assign>
+        <!-- Continue to rule engine with partial data -->
+        <invoke name="RunRulesWithPartialData" partnerLink="ruleEngine"
+                operation="evaluateIncome" inputVariable="ruleRequest"
+                outputVariable="ruleResponse"/>
+      </sequence>
+    </catch>
+    <catchAll>
+      <sequence name="HandleUnexpectedFault">
+        <assign name="SetSystemError">
+          <copy>
+            <from>'SYSTEM_ERROR'</from>
+            <to variable="applicationResponse" part="verificationStatus"/>
+          </copy>
+        </assign>
+        <invoke name="AuditSystemError" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <reply name="ReplySystemError" partnerLink="lendingChannel"
+               operation="verifyIncome" variable="applicationResponse"/>
+      </sequence>
+    </catchAll>
+  </faultHandlers>
+
+  <compensationHandler>
+    <!-- If something downstream fails after we've written to core banking, roll back -->
+    <sequence name="CompensateVerification">
+      <invoke name="ReverseCoreBankingWrite" partnerLink="coreBanking"
+              operation="reverseVerificationResult" inputVariable="persistRequest"/>
+      <invoke name="AuditCompensation" partnerLink="auditBus"
+              operation="publishEvent" inputVariable="auditEvent"/>
+    </sequence>
+  </compensationHandler>
+
+  <eventHandlers>
+    <!-- SLA breach: if whole process exceeds 4 hours, escalate -->
+    <onAlarm>
+      <for>'PT4H'</for>
+      <sequence name="SLABreachEscalation">
+        <assign name="SetSLABreachFlag">
+          <copy>
+            <from>'SLA_BREACH'</from>
+            <to variable="auditEvent" part="eventType"/>
+          </copy>
+        </assign>
+        <invoke name="PublishSLABreach" partnerLink="auditBus"
+                operation="publishEvent" inputVariable="auditEvent"/>
+        <!-- IBM WPS: escalate to supervisor task -->
+        <bpelx:task name="SupervisorEscalation"
+                    taskType="HUMAN_TASK"
+                    staffQuery="role:LendingOpsManager"
+                    escalationAction="NOTIFY"
+                    priority="1"/>
+      </sequence>
+    </onAlarm>
+  </eventHandlers>
+
+  <sequence name="IncomeVerificationMain">
+
+    <!-- Step 1: Receive application from channel -->
+    <receive name="ReceiveApplication"
+             partnerLink="lendingChannel"
+             operation="verifyIncome"
+             variable="applicationRequest"
+             createInstance="yes"/>
+
+    <!-- Step 2: Audit — log receipt for compliance -->
+    <assign name="BuildReceiptAuditEvent">
+      <copy>
+        <from>'APPLICATION_RECEIVED'</from>
+        <to variable="auditEvent" part="eventType"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.applicationId</from>
+        <to variable="auditEvent" part="referenceId"/>
+      </copy>
+    </assign>
+    <invoke name="AuditReceipt" partnerLink="auditBus"
+            operation="publishEvent" inputVariable="auditEvent"/>
+
+    <!-- Step 3: Build bureau request payloads -->
+    <assign name="PreparePayrollRequest">
+      <copy>
+        <from>$applicationRequest.customerId</from>
+        <to variable="payrollRequest" part="customerId"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.employerABN</from>
+        <to variable="payrollRequest" part="employerABN"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.consentToken</from>
+        <to variable="payrollRequest" part="consentReference"/>
+      </copy>
+    </assign>
+    <assign name="PrepareTaxRequest">
+      <copy>
+        <from>$applicationRequest.customerId</from>
+        <to variable="taxRequest" part="customerId"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.taxFileNumber</from>
+        <to variable="taxRequest" part="tfn"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.consentToken</from>
+        <to variable="taxRequest" part="consentReference"/>
+      </copy>
+    </assign>
+
+    <!-- Step 4: Parallel bureau lookups -->
+    <flow name="ParallelBureauLookups">
+      <links>
+        <link name="payrollComplete"/>
+        <link name="taxComplete"/>
+      </links>
+
+      <invoke name="VerifyWithPayrollBureau"
+              partnerLink="payrollBureau"
+              operation="verifyEmploymentIncome"
+              inputVariable="payrollRequest"
+              outputVariable="payrollResponse"/>
+
+      <invoke name="VerifyWithATOGateway"
+              partnerLink="taxPortal"
+              operation="retrieveIncomeStatement"
+              inputVariable="taxRequest"
+              outputVariable="taxResponse"/>
+    </flow>
+
+    <!-- Step 5: Evaluate confidence — low confidence triggers human review -->
+    <if name="CheckConfidenceLevel">
+      <condition>
+        $payrollResponse.confidenceScore &lt; 0.75
+        or $taxResponse.matchQuality = 'LOW'
+        or $payrollResponse.employmentStatus = 'SELF_EMPLOYED'
+      </condition>
+
+      <!-- Low confidence: IBM WPS human task — analyst reviews payslips/NOAs -->
+      <sequence name="HumanReviewRequired">
+        <assign name="SetReviewPending">
+          <copy>
+            <from>'PENDING_HUMAN_REVIEW'</from>
+            <to variable="applicationResponse" part="verificationStatus"/>
+          </copy>
+        </assign>
+        <bpelx:task name="AnalystIncomeReview"
+                    taskType="HUMAN_TASK"
+                    staffQuery="role:LendingAnalyst,ou=IncomeVerification"
+                    potentialOwners="cn=income-analysts,ou=groups,dc=bank,dc=com"
+                    priority="2"
+                    durationExpression="'PT2H'"
+                    escalationTarget="role:SeniorAnalyst">
+          <bpelx:input  variable="payrollResponse"/>
+          <bpelx:input  variable="taxResponse"/>
+          <bpelx:input  variable="applicationRequest"/>
+          <bpelx:output variable="humanTaskOutput"/>
+        </bpelx:task>
+        <assign name="MergeHumanDecision">
+          <copy>
+            <from>$humanTaskOutput.analystVerifiedIncome</from>
+            <to variable="ruleRequest" part="verifiedAnnualIncome"/>
+          </copy>
+          <copy>
+            <from>$humanTaskOutput.analystNotes</from>
+            <to variable="ruleRequest" part="analystOverrideNotes"/>
+          </copy>
+          <copy>
+            <from>'HUMAN_VERIFIED'</from>
+            <to variable="ruleRequest" part="verificationMethod"/>
+          </copy>
+        </assign>
+      </sequence>
+
+      <else>
+        <!-- High confidence: automated path -->
+        <assign name="MergeAutomatedData">
+          <copy>
+            <from>$payrollResponse.grossAnnualIncome</from>
+            <to variable="ruleRequest" part="verifiedAnnualIncome"/>
+          </copy>
+          <copy>
+            <from>$taxResponse.taxableIncome</from>
+            <to variable="ruleRequest" part="taxableIncome"/>
+          </copy>
+          <copy>
+            <from>'AUTOMATED'</from>
+            <to variable="ruleRequest" part="verificationMethod"/>
+          </copy>
+        </assign>
+      </else>
+    </if>
+
+    <!-- Step 6: IBM ODM business rule — PASS / REFER / DECLINE -->
+    <assign name="PrepareRuleRequest">
+      <copy>
+        <from>$applicationRequest.declaredIncome</from>
+        <to variable="ruleRequest" part="declaredIncome"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.loanAmount</from>
+        <to variable="ruleRequest" part="requestedLoanAmount"/>
+      </copy>
+      <copy>
+        <from>$applicationRequest.applicationId</from>
+        <to variable="ruleRequest" part="applicationId"/>
+      </copy>
+    </assign>
+    <bpelx:callBusinessRule name="EvaluateIncomeRule"
+                            ruleAppName="LendingDecisionApp"
+                            ruleSetPath="/income-verification/v2/IncomeVerificationRuleset"
+                            inputVariable="ruleRequest"
+                            outputVariable="ruleResponse"/>
+
+    <!-- Step 7: Scope — persist to core banking (compensatable) -->
+    <scope name="PersistResultScope">
+      <compensationHandler>
+        <invoke name="RollbackPersist" partnerLink="coreBanking"
+                operation="reverseVerificationResult" inputVariable="persistRequest"/>
+      </compensationHandler>
+      <faultHandlers>
+        <catch faultName="tns:CoreBankingWriteFailure">
+          <sequence>
+            <throw name="EscalateCoreFailure" faultName="tns:CriticalSystemFault"/>
+          </sequence>
+        </catch>
+      </faultHandlers>
+      <sequence>
+        <assign name="BuildPersistRequest">
+          <copy>
+            <from>$applicationRequest.applicationId</from>
+            <to variable="persistRequest" part="applicationId"/>
+          </copy>
+          <copy>
+            <from>$ruleResponse.decision</from>
+            <to variable="persistRequest" part="verificationDecision"/>
+          </copy>
+          <copy>
+            <from>$ruleResponse.verifiedIncome</from>
+            <to variable="persistRequest" part="verifiedIncome"/>
+          </copy>
+        </assign>
+        <invoke name="WriteToCoreBanking" partnerLink="coreBanking"
+                operation="saveVerificationResult" inputVariable="persistRequest"/>
+      </sequence>
+    </scope>
+
+    <!-- Step 8: Map rule response to final application response -->
+    <assign name="BuildApplicationResponse">
+      <copy>
+        <from>$ruleResponse.decision</from>
+        <to variable="applicationResponse" part="verificationStatus"/>
+      </copy>
+      <copy>
+        <from>$ruleResponse.verifiedIncome</from>
+        <to variable="applicationResponse" part="verifiedAnnualIncome"/>
+      </copy>
+      <copy>
+        <from>$ruleResponse.incomeVariancePercent</from>
+        <to variable="applicationResponse" part="variancePercent"/>
+      </copy>
+      <copy>
+        <from>$ruleResponse.referralReasons</from>
+        <to variable="applicationResponse" part="referralReasons"/>
+      </copy>
+    </assign>
+
+    <!-- Step 9: Audit final outcome -->
+    <assign name="BuildOutcomeAuditEvent">
+      <copy>
+        <from>'VERIFICATION_COMPLETE'</from>
+        <to variable="auditEvent" part="eventType"/>
+      </copy>
+      <copy>
+        <from>$ruleResponse.decision</from>
+        <to variable="auditEvent" part="outcome"/>
+      </copy>
+    </assign>
+    <invoke name="AuditOutcome" partnerLink="auditBus"
+            operation="publishEvent" inputVariable="auditEvent"/>
+
+    <!-- Step 10: Reply to originating channel -->
+    <reply name="ReplyToChannel"
+           partnerLink="lendingChannel"
+           operation="verifyIncome"
+           variable="applicationResponse"/>
+
+  </sequence>
+
+</process>
