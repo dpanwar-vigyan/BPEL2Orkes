@@ -1,7 +1,7 @@
 # BPEL2Orkes — Product Backlog
 
 **Studio:** Kshetra Studio · [askmybank.ai](https://askmybank.ai)  
-**Updated:** 2026-06-09
+**Updated:** 2026-06-13
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
@@ -93,6 +93,79 @@ Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
 | T-4 | IBM WPS 6.x BPELX namespace tests | 🔲 Planned | |
 | T-5 | IBM WPS 7.x BPELX namespace tests | 🔲 Planned | |
 | T-6 | Stress test with real exported IBM BAW process (anonymised) | 🔲 Planned | Source when available from bank partner |
+
+---
+
+## API Interface (REST)
+
+Expose the parser + mapper pipeline as a self-hosted REST API so bank IT teams
+can integrate conversion into their own CI/CD or migration tooling.
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| A-1 | `POST /api/v1/convert` — accepts BPEL XML body, returns Conductor bundle JSON | 🔲 Planned | FastAPI or Flask; stateless |
+| A-2 | `POST /api/v1/parse` — parse only, returns AST JSON (diagnostic endpoint) | 🔲 Planned | |
+| A-3 | `POST /api/v1/validate` — parse + map + validate against Orkes instance | 🔲 Planned | Requires `orkesBaseUrl` + API key in request header |
+| A-4 | `GET /api/v1/health` and `GET /api/v1/version` | 🔲 Planned | |
+| A-5 | API key auth (simple, self-managed) for self-hosted deployments | 🔲 Planned | No cloud auth dependency |
+| A-6 | `Docker` image — `ghcr.io/kshetra-studio/bpel2orkes:latest` | 🔲 Planned | Customer runs in their own VPC |
+| A-7 | Helm chart for Kubernetes deployment (bank-friendly) | 🔲 Planned | |
+| A-8 | Request size limit + BPEL-only content-type validation | 🔲 Planned | Reject non-BPEL payloads early |
+| A-9 | No-persistence guarantee — BPEL input never written to disk or logged | 🔲 Planned | Core security requirement — see Security section below |
+
+---
+
+## MCP Server (Claude / AI Agent Integration)
+
+Expose the converter as an MCP server so AI agents (Claude, Copilot, etc.)
+can convert BPEL inline during a migration engagement — without the customer
+pasting code into a chat window.
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| MC-1 | `convert_bpel` tool — takes BPEL XML string, returns Conductor bundle | 🔲 Planned | Core MCP tool |
+| MC-2 | `parse_bpel` tool — parse only, returns AST (for agent inspection) | 🔲 Planned | Useful for agents doing pre-flight analysis |
+| MC-3 | `list_warnings` tool — returns just the `_warning` fields from a conversion | 🔲 Planned | Lets agent surface manual review items |
+| MC-4 | `get_mapping_reference` tool — returns mapping table for a given BPEL construct | 🔲 Planned | In-context reference for agent guidance |
+| MC-5 | MCP server runs **locally** (stdio transport) by default — BPEL never leaves machine | 🔲 Planned | Key security posture for enterprise use |
+| MC-6 | Optional SSE transport for team deployments (self-hosted, behind VPN) | 🔲 Planned | |
+| MC-7 | Publish to MCP Registry | 🔲 Planned | Discovery for Orkes/Claude ecosystem |
+
+---
+
+## Public Demo (Orkes Demo Platform)
+
+**Decision: Optional feature — strong marketing value, strict data boundary required.**
+
+Recommended approach:
+- **Demo mode** only converts the four included sample BPEL files (no upload) — zero customer data risk, pure showcase
+- **Hosted API** for real customer use is self-deployed (VPC/on-prem) — customer controls their data
+- Orkes Demo platform deployment is valuable for Orkes sales team to demo the concept
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| D-1 | Public demo UI at `askmybank.ai/bpel2orkes` — converts sample files only, no upload | 🔲 Planned | Safe for public; showcases output quality |
+| D-2 | "Try with your own BPEL" mode — self-hosted Docker option linked from demo page | 🔲 Planned | Guides customer to run locally |
+| D-3 | Deploy working demo workflow on Orkes Demo Conductor instance | 🔲 Planned | Show the actual converted workflow running, not just JSON |
+| D-4 | Orkes Demo platform integration (coordinate with Orkes team) | 🔲 Planned | Use as joint marketing asset |
+
+---
+
+## Security & Data Governance
+
+Banks will not use this tool without satisfying these requirements.
+These are not optional — they gate enterprise adoption.
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| SEC-1 | BPEL input is **never persisted** — processed in memory, discarded immediately | 🔲 Planned | Must be documented and auditable |
+| SEC-2 | No telemetry or usage analytics on BPEL content | 🔲 Planned | Anonymous usage metrics (request count, duration) are acceptable with consent |
+| SEC-3 | T&C / disclaimer for hosted API: "Do not submit production data or customer PII" | 🔲 Planned | BPEL process config should not contain PII — but disclaim anyway |
+| SEC-4 | T&C must explicitly state: BPEL is process configuration, not customer data | 🔲 Planned | Helps bank legal teams approve usage |
+| SEC-5 | Air-gap deployment guide (no outbound internet required) | 🔲 Planned | Many bank environments are air-gapped |
+| SEC-6 | SBOM (Software Bill of Materials) — dependencies are `lxml`, `pytest` only | 🔲 Planned | Low risk; banks need this for procurement |
+| SEC-7 | Penetration test checklist for self-hosted API | 🔲 Planned | |
+| SEC-8 | MCP local-only mode as default — document clearly | 🔲 Planned | Prevents accidental cloud routing of BPEL |
 
 ---
 
