@@ -1,10 +1,38 @@
 # BPEL2Orkes — Product Backlog
 
-**Studio:** Kshetra Studio · [askmybank.ai](https://askmybank.ai)  
+**Studio:** Kshetra Studio · [ktools.kshetra.studio](https://ktools.kshetra.studio)  
 **Updated:** 2026-06-13
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
+
+---
+
+## 🌐 Domain & Vertical Strategy
+
+**Decided:** `ktools.kshetra.studio/bpel2orkes` is the canonical product URL.
+`askmybank.ai` is a banking vertical landing page that points there.
+
+**Why:** BPEL is not bank-specific. Any organisation that ran IBM WPS/BAW/IIB is a
+target customer. Anchoring the product under a bank-only domain caps the market.
+
+| Domain | Purpose | Audience |
+|---|---|---|
+| `ktools.kshetra.studio/bpel2orkes` | Product — API, MCP, Web UI | All sectors |
+| `askmybank.ai/bpel2orkes` | Banking vertical landing page | Banks (APAC focus) |
+| *(future)* askmyinsurer.ai | Insurance vertical | Insurers running IBM BPM |
+| *(future)* bpel2orkes.io | Standalone domain | Under consideration |
+
+**Target sectors beyond banking:**
+
+| Sector | IBM product typically used | Example BPEL processes |
+|---|---|---|
+| Insurance | WPS, BAW | Claims processing, policy underwriting, reinsurance |
+| Telco | WPS, IIB/ACE | Order management, number porting, service provisioning |
+| Government | WPS, BPM | Benefits processing, permit workflows, citizen services |
+| Healthcare | WPS, BAW | Patient pathway, prior authorisation, claims adjudication |
+| Utilities | WPS | Smart meter events, billing, outage management |
+| Retail / Supply Chain | WPS, IIB | Order fulfilment, supplier onboarding |
 
 ---
 
@@ -14,7 +42,7 @@ Three delivery tiers — customers choose based on their risk appetite and budge
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  TIER 1 — Public SaaS (askmybank.ai/bpel2orkes)                        │
+│  TIER 1 — Public SaaS (ktools.kshetra.studio/bpel2orkes)               │
 │  • Hosted by Kshetra Studio                                             │
 │  • Customer accepts T&C (BPEL data consent + usage rights)             │
 │  • Freemium: first 5 conversions free, then subscription / pay-per-use │
@@ -227,6 +255,44 @@ Two distinct T&C positions — one per tier. Getting this right gates enterprise
 | SEC-4 | Rate limiting per API key and per IP | 🔲 Planned | |
 | SEC-5 | No telemetry on BPEL content; anonymous usage metrics only (opt-in) | 🔲 Planned | |
 | SEC-6 | MCP local-only stdio mode as the default and recommended mode | 🔲 Planned | Prevents accidental cloud routing |
+
+---
+
+## Infrastructure & Deployment
+
+`kshetra.studio` and `askmybank.ai` are both live. All deployments to these domains
+must flow through staging first. See [architecture.md](architecture.md) for the full
+environment model.
+
+### Environments
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| INF-1 | `staging-ktools.kshetra.studio/bpel2orkes` subdomain configured | 🔲 Planned | Isolated — zero risk to live kshetra.studio |
+| INF-2 | `staging.askmybank.ai` subdomain configured | 🔲 Planned | For banking landing page testing |
+| INF-3 | robots.txt + X-Robots-Tag on all staging URLs (no public indexing) | 🔲 Planned | |
+| INF-4 | Environment variable config per environment (local / staging / prod) | 🔲 Planned | See architecture.md env var table |
+| INF-5 | Separate Orkes Conductor instances for staging vs production | 🔲 Planned | Staging workflows must never touch prod |
+
+### CI/CD Pipeline
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| CI-1 | GitHub Actions: run tests on every PR (`pytest tests/ -v`) | 🔲 Planned | Block merge if tests fail |
+| CI-2 | GitHub Actions: auto-deploy to staging on merge to `main` | 🔲 Planned | |
+| CI-3 | Smoke test suite for staging post-deploy (convert each sample file, assert 200 + non-empty bundle) | 🔲 Planned | Catches regressions before production gate |
+| CI-4 | GitHub Actions: production deploy behind manual approval gate | 🔲 Planned | Repo owner approval required — prevents accidental prod push |
+| CI-5 | Docker image tagged with git SHA + semver (`bpel2orkes:1.0.0`, `bpel2orkes:sha-abc123`) | 🔲 Planned | Enables precise rollback |
+| CI-6 | Rollback runbook — re-run last successful production deploy job | 🔲 Planned | Target: < 2 min to rollback |
+| CI-7 | Dependabot for `lxml` and other dependencies | 🔲 Planned | |
+
+### Monitoring
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| MON-1 | Sentry error tracking (separate DSN per environment) | 🔲 Planned | Errors in staging don't pollute prod dashboard |
+| MON-2 | Uptime monitor on `/api/v1/health` (staging + prod separately) | 🔲 Planned | |
+| MON-3 | Anonymous usage metrics: request count, conversion duration, warning count | 🔲 Planned | No BPEL content in metrics — only aggregate counts |
 
 ---
 

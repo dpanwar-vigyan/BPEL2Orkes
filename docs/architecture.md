@@ -156,6 +156,115 @@ docs/
 
 ---
 
+## Hosting & Domain Strategy
+
+### Canonical product URL
+
+```
+ktools.kshetra.studio/bpel2orkes    ← product home (sector-agnostic)
+```
+
+`askmybank.ai` and future vertical sites are **marketing landing pages** that link
+to `ktools.kshetra.studio` for the actual product. The tool works for any sector
+that ran IBM WPS/BAW/IIB (insurance, telco, government, healthcare, utilities) —
+anchoring it under a bank-only domain caps the addressable market.
+
+```
+ktools.kshetra.studio/bpel2orkes    API + MCP + web UI  (product)
+askmybank.ai/bpel2orkes             banking vertical landing page → ktools
+(future) askmyinsurer.ai            insurance vertical → ktools
+(future) bpel2orkes.io              standalone domain option (under consideration)
+```
+
+**Why `ktools.kshetra.studio`:** positions this as one tool in the Kshetra Studio
+developer tools platform, not a single-purpose site. Easier to cross-promote future
+tools. Domain already exists and is live.
+
+---
+
+## Deployment Environments
+
+**Context:** `kshetra.studio` and `askmybank.ai` are both live production sites.
+Any deployment to these domains must be gated behind staging. A broken deploy is
+a visible incident for real visitors.
+
+### Environment model
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  LOCAL                                                                  │
+│  Developer's machine                                                    │
+│  python src/bpel_parser.py  /  python src/pattern_mapper.py            │
+│  MCP: local stdio transport (no network)                                │
+│  Orkes: local Docker (docker-compose up)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│  STAGING                                                                │
+│  staging-ktools.kshetra.studio/bpel2orkes                               │
+│  • Auto-deployed on every merge to `main`                               │
+│  • Isolated subdomain — zero risk to live kshetra.studio                │
+│  • Smoke tests run automatically post-deploy                            │
+│  • Orkes: staging Conductor instance (separate cluster or namespace)    │
+├─────────────────────────────────────────────────────────────────────────┤
+│  PRODUCTION                                                             │
+│  ktools.kshetra.studio/bpel2orkes                                       │
+│  • Promoted from staging by manual approval (GitHub Actions env gate)   │
+│  • Never deployed directly — always staging → approve → production      │
+│  • Rollback: re-deploy previous Docker image tag (< 2 min)             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Branch and deploy flow
+
+```
+feature/xyz  ──► main  ──► staging (auto)  ──► [approve]  ──► production
+    │               │           │                                  │
+  PR review     tests pass   smoke test                     manual gate
+                             + manual QA                   (owner only)
+```
+
+### Environment variables per environment
+
+| Variable | Local | Staging | Production |
+|---|---|---|---|
+| `BPEL2ORKES_ENV` | `local` | `staging` | `production` |
+| `ORKES_BASE_URL` | `http://localhost:8080` | staging Conductor URL | prod Conductor URL |
+| `ORKES_API_KEY` | local dev key | staging key | prod key (secret) |
+| `API_KEY_REQUIRED` | `false` | `false` | `true` |
+| `BPEL_MAX_SIZE_MB` | `50` | `10` | `5` |
+| `CORPUS_OPT_IN_ENABLED` | `false` | `false` | `true` |
+| `SENTRY_DSN` | — | staging DSN | prod DSN |
+
+### What is never shared between environments
+
+- API keys (each env has its own, rotated independently)
+- Orkes Conductor instances (staging workflows don't touch prod)
+- Customer BPEL submissions (staging submissions are test data only, explicitly labelled)
+- Database / storage (if added later — separate instances, no prod data in staging)
+
+### Staging URL convention
+
+```
+staging-ktools.kshetra.studio   ← staging for ktools platform
+staging.askmybank.ai            ← staging for askmybank vertical pages
+```
+
+Staging subdomains are **not linked from any public page** and are not indexed
+(robots.txt + X-Robots-Tag). They are accessible for internal testing and
+shared with Orkes team for joint demos before production release.
+
+### Rollback procedure
+
+```bash
+# Re-deploy the last known-good image tag
+docker pull ghcr.io/kshetra-studio/bpel2orkes:<last-good-tag>
+# or via GitHub Actions: re-run the last successful production deploy job
+```
+
+The API is stateless (no database, no session state) so rollback is instantaneous —
+just swap the container image. Target rollback time: under 2 minutes.
+
+---
+
 ## Running the tests
 
 ```bash
