@@ -113,9 +113,11 @@ class Bpel2OrkesService(Stack):
                 },
             ),
             public_load_balancer=True,
-            listener_port=443,
-            protocol=elbv2.ApplicationProtocol.HTTPS,
-            # ACM cert — create manually in console first, paste ARN here
+            listener_port=80,
+            protocol=elbv2.ApplicationProtocol.HTTP,
+            # HTTPS: uncomment after ACM cert is issued and DNS is pointed at the ALB
+            # listener_port=443,
+            # protocol=elbv2.ApplicationProtocol.HTTPS,
             # certificate=acm.Certificate.from_certificate_arn(
             #     self, "Cert", "arn:aws:acm:ap-southeast-2:835422347653:certificate/YOUR-CERT-ARN"
             # ),
