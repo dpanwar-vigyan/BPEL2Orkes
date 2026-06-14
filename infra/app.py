@@ -52,12 +52,12 @@ class EcrStack(Stack):
             lifecycle_rules=[
                 ecr.LifecycleRule(
                     description="Keep last 20 staging images",
-                    tag_prefix_filter="staging-",
+                    tag_prefix_list=["staging-"],
                     max_image_count=20,
                 ),
                 ecr.LifecycleRule(
                     description="Keep last 10 prod images",
-                    tag_prefix_filter="prod-",
+                    tag_prefix_list=["prod-"],
                     max_image_count=10,
                 ),
             ],
