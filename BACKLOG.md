@@ -18,10 +18,15 @@ target customer. Anchoring the product under a bank-only domain caps the market.
 
 | Domain | Purpose | Audience |
 |---|---|---|
-| `ktools.kshetra.studio/bpel2orkes` | Product — API, MCP, Web UI | All sectors |
+| `bpel2orkes.kshetra.studio` | Product — API, MCP, Web UI | All sectors |
+| `staging.bpel2orkes.kshetra.studio` | Staging — isolated, not public | Internal / Orkes team demos |
 | `askmybank.ai/bpel2orkes` | Banking vertical landing page | Banks (APAC focus) |
+| *(future)* `ktools.kshetra.studio` | Tools directory listing bpel2orkes + future tools | Broad |
 | *(future)* askmyinsurer.ai | Insurance vertical | Insurers running IBM BPM |
-| *(future)* bpel2orkes.io | Standalone domain | Under consideration |
+
+**Decided against** `ktools.kshetra.studio/bpel2orkes` — ktools doesn't exist as a platform
+yet and building bpel2orkes under that path creates a blocker. Each tool gets its own subdomain;
+ktools becomes a directory when there are 3+ tools ready.
 
 **Target sectors beyond banking:**
 
@@ -268,8 +273,8 @@ environment model.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| INF-1 | `staging-ktools.kshetra.studio/bpel2orkes` subdomain configured | 🔲 Planned | Isolated — zero risk to live kshetra.studio |
-| INF-2 | `staging.askmybank.ai` subdomain configured | 🔲 Planned | For banking landing page testing |
+| INF-1 | `staging.bpel2orkes.kshetra.studio` DNS CNAME configured | 🔲 Planned | Points to hosting provider; isolated from live kshetra.studio |
+| INF-2 | `bpel2orkes.kshetra.studio` DNS CNAME configured (production) | 🔲 Planned | Only after staging is verified |
 | INF-3 | robots.txt + X-Robots-Tag on all staging URLs (no public indexing) | 🔲 Planned | |
 | INF-4 | Environment variable config per environment (local / staging / prod) | 🔲 Planned | See architecture.md env var table |
 | INF-5 | Separate Orkes Conductor instances for staging vs production | 🔲 Planned | Staging workflows must never touch prod |

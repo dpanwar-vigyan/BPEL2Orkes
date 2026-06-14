@@ -161,24 +161,29 @@ docs/
 ### Canonical product URL
 
 ```
-ktools.kshetra.studio/bpel2orkes    ← product home (sector-agnostic)
+bpel2orkes.kshetra.studio           ← product home (all sectors)
 ```
 
-`askmybank.ai` and future vertical sites are **marketing landing pages** that link
-to `ktools.kshetra.studio` for the actual product. The tool works for any sector
-that ran IBM WPS/BAW/IIB (insurance, telco, government, healthcare, utilities) —
-anchoring it under a bank-only domain caps the addressable market.
+**Decision (2026-06-14):** Use a dedicated subdomain per tool, not a path under `ktools`.
+
+Rationale:
+- `ktools.kshetra.studio` doesn't exist as a platform yet — building bpel2orkes under
+  that path creates a dependency on building ktools first
+- `bpel2orkes.kshetra.studio` is independently deployable: one subdomain → one container
+- Clean URL to hand to Orkes sales team and bank customers
+- When ktools eventually launches as a tools directory, it lists tools at their own
+  subdomains rather than hosting them under a shared path
 
 ```
-ktools.kshetra.studio/bpel2orkes    API + MCP + web UI  (product)
-askmybank.ai/bpel2orkes             banking vertical landing page → ktools
-(future) askmyinsurer.ai            insurance vertical → ktools
-(future) bpel2orkes.io              standalone domain option (under consideration)
-```
+bpel2orkes.kshetra.studio           ← product: API + MCP + web UI
+staging.bpel2orkes.kshetra.studio   ← staging (isolated, not publicly linked)
+api.bpel2orkes.kshetra.studio       ← REST API (optional explicit subdomain)
+mcp.bpel2orkes.kshetra.studio       ← MCP server endpoint
 
-**Why `ktools.kshetra.studio`:** positions this as one tool in the Kshetra Studio
-developer tools platform, not a single-purpose site. Easier to cross-promote future
-tools. Domain already exists and is live.
+askmybank.ai/bpel2orkes             ← banking vertical landing page → bpel2orkes.kshetra.studio
+(future) askmyinsurer.ai            ← insurance vertical → bpel2orkes.kshetra.studio
+(future) ktools.kshetra.studio      ← tools directory, lists bpel2orkes + future tools
+```
 
 ---
 
@@ -244,8 +249,8 @@ feature/xyz  ──► main  ──► staging (auto)  ──► [approve]  ─�
 ### Staging URL convention
 
 ```
-staging-ktools.kshetra.studio   ← staging for ktools platform
-staging.askmybank.ai            ← staging for askmybank vertical pages
+staging.bpel2orkes.kshetra.studio   ← staging for the product
+staging.askmybank.ai                ← staging for askmybank vertical landing page
 ```
 
 Staging subdomains are **not linked from any public page** and are not indexed
