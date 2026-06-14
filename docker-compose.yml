@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - BPEL2ORKES_ENV=local
+      - BPEL_MAX_SIZE_MB=50
+    volumes:
+      - ./src:/app/src      # hot reload in local dev
+      - ./samples:/app/samples
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
