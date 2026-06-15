@@ -67,23 +67,39 @@ def _map_invoke(act: dict) -> list[dict]:
             "outputVariable": act.get("outputVariable"),
         },
         "_bpelSource": {"type": "invoke", "name": act.get("name")},
+        "_warning": (
+            f"<invoke> '{act.get('name', operation)}' → SIMPLE task (worker stub). "
+            f"If partnerLink '{partner}' was a SOAP/WSDL service or SCA Java component, "
+            f"implement a Conductor worker: register task type '{_slug(partner)}_{_slug(operation)}', "
+            f"deploy a worker that polls GET /api/tasks/poll/..., executes the call, "
+            f"and posts results back. SOAP callers must handle WS envelope and security in the worker."
+        ),
     }
     return [task]
 
 
 def _map_receive(act: dict) -> list[dict]:
     ref = _slug(act.get("name"), "receive")
+    partner = act.get("partnerLink", "unknown")
+    operation = act.get("operation", "unknown")
     return [{
-        "name": f"wait_{_slug(act.get('operation', 'message'))}",
+        "name": f"wait_{_slug(operation)}",
         "taskReferenceName": ref,
         "type": "WAIT",
         "inputParameters": {
-            "partnerLink": act.get("partnerLink"),
-            "operation": act.get("operation"),
+            "partnerLink": partner,
+            "operation": operation,
             "variable": act.get("variable"),
             "createInstance": act.get("createInstance", "no"),
         },
         "_bpelSource": {"type": "receive", "name": act.get("name")},
+        "_warning": (
+            f"<receive> '{act.get('name', operation)}' uses ESB push pattern — "
+            f"BPEL waited for an inbound message on partnerLink '{partner}'. "
+            f"In Conductor this WAIT task must be completed by an external callback: "
+            f"POST /api/tasks/{{taskId}}/ack with the payload. "
+            f"Wire your ESB/MQ consumer or API gateway to call that endpoint."
+        ),
     }]
 
 
@@ -364,6 +380,7 @@ def _map_pick(act: dict) -> list[dict]:
     # onMessage branches become post-WAIT SWITCH
     msg_branches = [b for b in branches if b.get("trigger") == "onMessage"]
 
+    operations = [b.get("operation", "?") for b in msg_branches]
     wait_task: dict[str, Any] = {
         "name": f"wait_event_{_slug(act.get('name', ''))}",
         "taskReferenceName": ref,
@@ -381,6 +398,14 @@ def _map_pick(act: dict) -> list[dict]:
             ],
         },
         "_bpelSource": {"type": "pick", "name": act.get("name")},
+        "_warning": (
+            f"<pick> '{act.get('name', ref)}' waits for one of {len(msg_branches)} "
+            f"inbound message(s) ({', '.join(operations)}) — ESB push pattern. "
+            f"In Conductor, each event source must POST to /api/tasks/{{taskId}}/ack to unblock "
+            f"this WAIT. Identify which ESB channel, queue, or API triggers each onMessage branch "
+            f"and add the callback call. "
+            + (f"Alarm/timeout of {timeout} maps to WAIT duration." if timeout else "No timeout defined — WAIT will block indefinitely without an external callback.")
+        ),
     }
     tasks = [wait_task]
 
@@ -663,6 +688,18 @@ def map_process(parsed: dict) -> dict:
 
     # Extract inlined sub-workflows and compensation workflows from scope tasks
     sub_wfs, comp_from_scopes, warnings = _extract_nested_workflows(main_tasks)
+
+    # M-17: warn on correlation sets — not automatically mapped
+    for cs in process.get("correlationSets", []):
+        cs_name = cs.get("name", "unknown")
+        props = cs.get("properties", [])
+        warnings.append(
+            f"Correlation set '{cs_name}' (properties: {', '.join(props) or 'none'}) is not mapped. "
+            f"In BPEL this routed async callbacks back to the correct process instance. "
+            f"In Conductor, use the workflow ID as your correlation key: pass it in every "
+            f"outbound HTTP call header (e.g. X-Correlation-Id: ${{workflow.workflowId}}) "
+            f"and have callers include it when posting task callbacks."
+        )
 
     return {
         "mainWorkflow": main_workflow,

@@ -119,7 +119,7 @@
 
 <header>
   <h1>BPEL<span>2</span>Orkes</h1>
-  <span class="badge">STAGING</span>
+  <span class="badge" id="env-badge" style="display:none">STAGING</span>
   <div class="header-links">
     <a href="/docs" target="_blank">API Docs</a>
     <a href="https://orkes.io" target="_blank">Orkes</a>
@@ -211,13 +211,16 @@
 
     <!-- Orkes validate -->
     <div class="validate-section">
-      <label>Register on Orkes Developer — enter your Application credentials</label>
+      <label>Register on Orkes — enter your cluster URL and Application credentials</label>
+      <div class="input-row" style="margin-bottom:6px">
+        <input type="text" id="orkes-base-url" placeholder="Orkes cluster URL" value="https://developer.orkescloud.com" autocomplete="off" style="flex:2">
+      </div>
       <div class="input-row" style="margin-bottom:6px">
         <input type="text" id="orkes-key-id" placeholder="Key ID" autocomplete="off">
         <input type="password" id="orkes-key-secret" placeholder="Key Secret">
       </div>
       <div class="input-row">
-        <span style="font-size:11px;color:var(--muted);flex:1">Orkes Console → Applications → your app → Key ID &amp; Key Secret</span>
+        <span style="font-size:11px;color:var(--muted);flex:1">Orkes Console → Applications → your app → Key ID &amp; Key Secret. Change cluster URL for self-hosted or cloud deployments.</span>
         <button class="btn btn-success" id="validate-btn" disabled>
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Register on Orkes
@@ -238,6 +241,15 @@
 <script>
 const API = '';  // same origin
 
+// Show env badge only for non-production
+fetch('/api/v1/health').then(r => r.json()).then(d => {
+  const badge = document.getElementById('env-badge');
+  if (d.env && d.env !== 'production') {
+    badge.textContent = d.env.toUpperCase();
+    badge.style.display = '';
+  }
+}).catch(() => {});
+
 // State
 let _bundle = null;
 let _activeTab = 'main';
@@ -253,6 +265,7 @@ const editorWrapper = document.getElementById('editor-wrapper');
 const copyBtn       = document.getElementById('copy-btn');
 const downloadBtn   = document.getElementById('download-btn');
 const validateBtn   = document.getElementById('validate-btn');
+const orkesBaseUrl   = document.getElementById('orkes-base-url');
 const orkesKeyId     = document.getElementById('orkes-key-id');
 const orkesKeySecret = document.getElementById('orkes-key-secret');
 const orkesResult   = document.getElementById('orkes-result');
@@ -475,12 +488,14 @@ validateBtn.addEventListener('click', async () => {
   orkesResult.textContent = '';
 
   try {
+    const baseUrl = orkesBaseUrl.value.trim() || 'https://developer.orkescloud.com';
     const resp = await fetch(`${API}/api/v1/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/xml',
         'X-Orkes-Key-Id': keyId,
         'X-Orkes-Key-Secret': keySecret,
+        'X-Orkes-Base-Url': baseUrl,
       },
       body: xml,
     });

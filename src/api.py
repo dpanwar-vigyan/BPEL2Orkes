@@ -236,11 +236,11 @@ async def convert_clean(request: Request):
     }
 
 
-async def _orkes_token(key_id: str, key_secret: str) -> str:
+async def _orkes_token(key_id: str, key_secret: str, base_url: str) -> str:
     """Exchange Orkes Key ID + Key Secret for a short-lived JWT token."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
-            f"{ORKES_BASE_URL}/api/token",
+            f"{base_url}/api/token",
             json={"keyId": key_id, "keySecret": key_secret},
             headers={"Content-Type": "application/json"},
         )
@@ -260,17 +260,22 @@ async def validate(
     request: Request,
     x_orkes_key_id: str = Header(..., description="Orkes Application Key ID"),
     x_orkes_key_secret: str = Header(..., description="Orkes Application Key Secret"),
+    x_orkes_base_url: str = Header(default=None, description="Orkes cluster URL (default: developer.orkescloud.com)"),
 ):
     """
     Convert BPEL XML, exchange Key ID + Key Secret for a JWT token, then register
-    the mainWorkflow on your Orkes Developer instance.
+    the mainWorkflow on the specified Orkes instance.
 
     Headers required:
       X-Orkes-Key-Id     — Key ID from your Orkes Application
       X-Orkes-Key-Secret — Key Secret from your Orkes Application
+    Optional:
+      X-Orkes-Base-Url   — Base URL of your Orkes cluster (default: https://developer.orkescloud.com)
 
     The workflow is registered (PUT /api/metadata/workflow) but NOT started.
     """
+    base_url = (x_orkes_base_url or ORKES_BASE_URL).rstrip("/")
+
     body = await request.body()
     _read_body(body)
     try:
@@ -280,13 +285,13 @@ async def validate(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
-    token = await _orkes_token(x_orkes_key_id, x_orkes_key_secret)
+    token = await _orkes_token(x_orkes_key_id, x_orkes_key_secret, base_url)
     main_wf = bundle["mainWorkflow"]
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.put(
-                f"{ORKES_BASE_URL}/api/metadata/workflow",
+                f"{base_url}/api/metadata/workflow",
                 json=[main_wf],
                 headers={
                     "X-Authorization": token,
