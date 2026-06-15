@@ -1,55 +1,91 @@
 """
 BPEL2Orkes REST API
-Wraps the parser + pattern mapper pipeline as a FastAPI service.
+Wraps the parser + pattern mapper + code generator pipeline as a FastAPI service.
 
 Endpoints:
-  POST /api/v1/convert   — BPEL XML → Conductor workflow bundle JSON
-  POST /api/v1/parse     — BPEL XML → AST JSON (diagnostic)
-  GET  /api/v1/health    — liveness check
-  GET  /api/v1/version   — version info
+  POST /api/v1/convert         — BPEL XML → raw Conductor bundle JSON (with internals)
+  POST /api/v1/convert/file    — multipart BPEL file upload → raw bundle JSON
+  POST /api/v1/convert/clean   — BPEL XML → clean deployable Conductor bundle JSON
+  POST /api/v1/validate        — BPEL XML → convert + register mainWorkflow on Orkes
+  POST /api/v1/parse           — BPEL XML → AST JSON (diagnostic)
+  GET  /api/v1/health          — liveness check
+  GET  /api/v1/version         — version info
+  GET  /                       — Web UI
 """
 
 from __future__ import annotations
 
 import os
 import time
+import httpx
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
-# Resolve src/ on path regardless of working directory
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from bpel_parser import parse_bpel, BPELParseError
 from pattern_mapper import map_bpel_to_conductor
+from code_generator import generate
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 ENV = os.getenv("BPEL2ORKES_ENV", "local")
 
 app = FastAPI(
     title="BPEL2Orkes",
     description="Convert IBM BPEL processes to Orkes Conductor workflow JSON",
     version=VERSION,
-    docs_url="/docs" if ENV != "production" else None,   # hide Swagger in prod
+    docs_url="/docs" if ENV != "production" else None,
     redoc_url="/redoc" if ENV != "production" else None,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://bpel2orkes.kshetra.studio",
-                   "https://staging.bpel2orkes.kshetra.studio",
-                   "https://askmybank.ai",
-                   "http://localhost:3000"],   # local dev UI
+    allow_origins=[
+        "https://bpel2orkes.kshetra.studio",
+        "https://staging.bpel2orkes.kshetra.studio",
+        "https://askmybank.ai",
+        "http://localhost:3000",
+        "http://localhost:8000",
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 MAX_BPEL_BYTES = int(os.getenv("BPEL_MAX_SIZE_MB", "5")) * 1024 * 1024
+
+# Orkes Developer base URL (can be overridden via env for other Orkes clusters)
+ORKES_BASE_URL = os.getenv("ORKES_BASE_URL", "https://developer.orkescloud.com")
+
+
+# ── Static UI ──────────────────────────────────────────────────────────────────
+
+_STATIC_DIR = Path(__file__).parent / "static"
+_STATIC_DIR.mkdir(exist_ok=True)
+
+# Mount static assets (CSS, JS, images) at /static — the index.html is served
+# directly via the root GET handler so we keep full control of the response.
+if (_STATIC_DIR / "assets").exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# Serve sample BPEL files for the UI sample loader
+_SAMPLES_DIR = Path(__file__).parent.parent / "samples"
+if _SAMPLES_DIR.exists():
+    app.mount("/samples", StaticFiles(directory=str(_SAMPLES_DIR)), name="samples")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def ui():
+    index = _STATIC_DIR / "index.html"
+    if not index.exists():
+        return HTMLResponse("<h1>BPEL2Orkes API</h1><p>UI not found.</p>", status_code=200)
+    return HTMLResponse(index.read_text(encoding="utf-8"))
 
 
 # ── Request size guard ─────────────────────────────────────────────────────────
@@ -68,7 +104,6 @@ async def limit_request_size(request: Request, call_next):
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _read_body(body: bytes) -> bytes:
-    """Validate content looks like XML before passing to parser."""
     stripped = body.lstrip()
     if not stripped.startswith(b"<"):
         raise HTTPException(
@@ -76,6 +111,15 @@ def _read_body(body: bytes) -> bytes:
             detail="Body does not appear to be XML. Send raw BPEL XML as the request body.",
         )
     return body
+
+
+def _convert(body: bytes) -> tuple[dict, float]:
+    """Parse + map + generate. Returns (clean_bundle, duration_ms)."""
+    t0 = time.perf_counter()
+    ast = parse_bpel(body)
+    raw_bundle = map_bpel_to_conductor(ast)
+    bundle = generate(raw_bundle)
+    return bundle, round((time.perf_counter() - t0) * 1000, 1)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -97,12 +141,7 @@ def version():
 
 @app.post("/api/v1/parse")
 async def parse(request: Request):
-    """
-    Parse BPEL XML and return the structured AST JSON.
-    Useful for inspection and debugging before mapping.
-
-    Send raw BPEL XML as the request body (Content-Type: application/xml).
-    """
+    """Parse BPEL XML → AST JSON. Useful for debugging before mapping."""
     body = await request.body()
     _read_body(body)
     t0 = time.perf_counter()
@@ -112,17 +151,13 @@ async def parse(request: Request):
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Unexpected parse error: {exc}")
-
-    return {
-        "durationMs": round((time.perf_counter() - t0) * 1000, 1),
-        "ast": ast,
-    }
+    return {"durationMs": round((time.perf_counter() - t0) * 1000, 1), "ast": ast}
 
 
 @app.post("/api/v1/convert")
 async def convert(request: Request):
     """
-    Convert BPEL XML to an Orkes Conductor workflow bundle.
+    Convert BPEL XML to a clean Orkes Conductor workflow bundle.
 
     Send raw BPEL XML as the request body (Content-Type: application/xml).
 
@@ -130,48 +165,36 @@ async def convert(request: Request):
       {
         "durationMs": 12.3,
         "warningCount": 2,
-        "bundle": {
-          "mainWorkflow":      {...},
-          "subWorkflows":      [...],
-          "compensationFlows": [...],
-          "faultHandlerFlows": [...],
-          "warnings":          [...]
-        }
+        "workflowCount": 3,
+        "bundle": { "mainWorkflow": {...}, "subWorkflows": [...], ... }
       }
     """
     body = await request.body()
     _read_body(body)
-    t0 = time.perf_counter()
     try:
-        ast = parse_bpel(body)
-        bundle = map_bpel_to_conductor(ast)
+        bundle, ms = _convert(body)
     except BPELParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
     return {
-        "durationMs": round((time.perf_counter() - t0) * 1000, 1),
+        "durationMs": ms,
         "warningCount": len(bundle.get("warnings", [])),
+        "workflowCount": bundle.get("workflowCount", 1),
         "bundle": bundle,
     }
 
 
 @app.post("/api/v1/convert/file")
 async def convert_file(file: UploadFile = File(...)):
-    """
-    Convert a BPEL file upload to a Conductor workflow bundle.
-    Accepts multipart/form-data with a 'file' field containing the .bpel file.
-    """
+    """Convert a BPEL file upload to a Conductor workflow bundle (multipart/form-data)."""
     if file.size and file.size > MAX_BPEL_BYTES:
         raise HTTPException(status_code=413, detail="File too large.")
-
     body = await file.read()
     _read_body(body)
-    t0 = time.perf_counter()
     try:
-        ast = parse_bpel(body)
-        bundle = map_bpel_to_conductor(ast)
+        bundle, ms = _convert(body)
     except BPELParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
@@ -179,8 +202,89 @@ async def convert_file(file: UploadFile = File(...)):
 
     return {
         "filename": file.filename,
-        "durationMs": round((time.perf_counter() - t0) * 1000, 1),
+        "durationMs": ms,
         "warningCount": len(bundle.get("warnings", [])),
+        "workflowCount": bundle.get("workflowCount", 1),
+        "bundle": bundle,
+    }
+
+
+@app.post("/api/v1/convert/clean")
+async def convert_clean(request: Request):
+    """
+    Same as /convert but the response contains only the mainWorkflow JSON,
+    ready to copy-paste into Orkes or register via the Orkes API.
+    """
+    body = await request.body()
+    _read_body(body)
+    try:
+        bundle, ms = _convert(body)
+    except BPELParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
+
+    return {
+        "durationMs": ms,
+        "warningCount": len(bundle.get("warnings", [])),
+        "workflowCount": bundle.get("workflowCount", 1),
+        "warnings": bundle.get("warnings", []),
+        "mainWorkflow": bundle["mainWorkflow"],
+        "subWorkflows": bundle.get("subWorkflows", []),
+        "compensationFlows": bundle.get("compensationFlows", []),
+        "faultHandlerFlows": bundle.get("faultHandlerFlows", []),
+    }
+
+
+@app.post("/api/v1/validate")
+async def validate(
+    request: Request,
+    x_orkes_api_key: str = Header(..., description="Your Orkes Developer API key"),
+):
+    """
+    Convert BPEL XML and register the mainWorkflow on your Orkes Developer instance.
+
+    Pass your Orkes API key in the X-Orkes-Api-Key header.
+    The workflow is registered (PUT /api/metadata/workflow) but NOT started.
+
+    Returns the Orkes API response alongside the converted bundle.
+    """
+    body = await request.body()
+    _read_body(body)
+    try:
+        bundle, ms = _convert(body)
+    except BPELParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
+
+    main_wf = bundle["mainWorkflow"]
+
+    # Register workflow on Orkes Developer
+    orkes_url = f"{ORKES_BASE_URL}/api/metadata/workflow"
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.put(
+                orkes_url,
+                json=[main_wf],
+                headers={
+                    "X-Authorization": x_orkes_api_key,
+                    "Content-Type": "application/json",
+                },
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not reach Orkes: {exc}")
+
+    orkes_ok = resp.status_code in (200, 201, 204)
+
+    return {
+        "durationMs": ms,
+        "warningCount": len(bundle.get("warnings", [])),
+        "workflowCount": bundle.get("workflowCount", 1),
+        "orkesStatus": resp.status_code,
+        "orkesOk": orkes_ok,
+        "orkesResponse": resp.text[:2000] if not orkes_ok else None,
+        "workflowName": main_wf.get("name"),
         "bundle": bundle,
     }
 

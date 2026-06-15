@@ -1,7 +1,7 @@
 # BPEL2Orkes — Product Backlog
 
 **Studio:** Kshetra Studio · [ktools.kshetra.studio](https://ktools.kshetra.studio)  
-**Updated:** 2026-06-13
+**Updated:** 2026-06-15
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
@@ -114,14 +114,14 @@ Three delivery tiers — customers choose based on their risk appetite and budge
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| G-1 | Emit clean Conductor workflow JSON (strip `_bpelSource`, `_warning`) | 🔲 Planned | First priority for Stage 3 |
-| G-2 | Write one JSON file per workflow (main + sub-workflows + fault/comp handlers) | 🔲 Planned | |
-| G-3 | Generate Conductor task definition stubs | 🔲 Planned | One task def per unique `<invoke>` operation |
-| G-4 | Generate Python worker skeleton (one file per partner link) | 🔲 Planned | |
-| G-5 | Generate Java worker skeleton (Spring Boot) | 🔲 Planned | Target audience is Java shops |
-| G-6 | Generate `docker-compose.yml` for local Orkes + worker testing | 🔲 Planned | |
-| G-7 | Simple XPath literal translation (`'APPROVED'` → `"APPROVED"`) | 🔲 Planned | 80% of assigns are literals |
-| G-8 | Variable reference translation (`$var.part` → `${workflow.variables.var}`) | 🔲 Planned | |
+| G-1 | Emit clean Conductor workflow JSON (strip `_bpelSource`, `_warning`, `_metadata`) | 🟢 Done | `src/code_generator.py` |
+| G-2 | Clean bundle exposed via `POST /api/v1/convert` and `POST /api/v1/convert/clean` | 🟢 Done | `src/api.py` |
+| G-3 | Simple XPath literal translation in SWITCH conditions | 🟢 Done | `_translate_condition()` in code_generator |
+| G-4 | Generate Conductor task definition stubs | 🔲 V1.1 | One task def per unique `<invoke>` operation |
+| G-5 | Generate Python worker skeleton (one file per partner link) | 🔲 V1.1 | |
+| G-6 | Generate Java worker skeleton (Spring Boot) | 🔲 V2 | Target audience is Java shops |
+| G-7 | Generate `docker-compose.yml` for local Orkes + worker testing | 🔲 V2 | |
+| G-8 | Variable reference translation (`$var.part` → `${workflow.variables.var}`) | 🔲 V1.1 | |
 
 ---
 
@@ -129,11 +129,11 @@ Three delivery tiers — customers choose based on their risk appetite and budge
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| V-1 | POST generated workflow JSON to Orkes `/api/metadata/workflow` | 🔲 Planned | Dry-run validation |
-| V-2 | Map Orkes validation errors back to BPEL source line numbers | 🔲 Planned | |
-| V-3 | Report missing task definitions | 🔲 Planned | |
-| V-4 | Check sub-workflow references are resolvable | 🔲 Planned | |
-| V-5 | Validate compensation workflow invocation order | 🔲 Planned | |
+| V-1 | POST generated workflow JSON to Orkes `/api/metadata/workflow` | 🟢 Done | `POST /api/v1/validate` — uses Orkes Developer (developer.orkescloud.com) |
+| V-2 | Map Orkes validation errors back to BPEL source line numbers | 🔲 V1.1 | |
+| V-3 | Report missing task definitions | 🔲 V1.1 | |
+| V-4 | Check sub-workflow references are resolvable | 🔲 V1.1 | |
+| V-5 | Validate compensation workflow invocation order | 🔲 V2 | |
 
 ---
 
@@ -199,12 +199,13 @@ Consenting customers opt in to BPEL corpus contribution (pattern library moat).
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| SW-1 | One-page converter UI at `askmybank.ai/bpel2orkes` | 🔲 Planned | Upload BPEL → view/download Conductor JSON |
-| SW-2 | Sample selector — convert included bank samples without upload | 🔲 Planned | Zero-risk entry, demonstrates quality |
-| SW-3 | Side-by-side view: BPEL source ↔ Conductor JSON output | 🔲 Planned | Visual diff is the best sales tool |
-| SW-4 | Warnings panel — list of manual review items with doc links | 🔲 Planned | |
-| SW-5 | "Deploy to my Orkes instance" button (one-click POST to customer's Orkes API) | 🔲 Planned | Requires customer to enter their Orkes URL + key |
-| SW-6 | T&C gate on file upload — explicit consent checkbox before BPEL is submitted | 🔲 Planned | Legal requirement; also communicates data handling |
+| SW-1 | One-page converter UI served from the API container at `/` | 🟢 Done | `src/static/index.html` — same-container, no extra infra |
+| SW-2 | Sample selector — convert included bank samples without upload | 🟢 Done | `/samples/*.bpel` served as static files |
+| SW-3 | Side-by-side view: BPEL source ↔ Conductor JSON output | 🟢 Done | Tab switcher: Main Workflow / Sub-Workflows / Full Bundle |
+| SW-4 | Warnings panel — list of manual review items | 🟢 Done | Amber panel appears when warnings > 0 |
+| SW-5 | "Register on Orkes" button — one-click POST to Orkes Developer | 🟢 Done | Uses `/api/v1/validate` with customer API key |
+| SW-6 | T&C gate on file upload — explicit consent checkbox before BPEL is submitted | 🔲 V1.1 | Legal requirement for public SaaS launch |
+| SW-7 | Move Web UI to S3 + CloudFront (separate from API) | 🔲 V2 | Better caching, CDN, custom error pages. Not needed until traffic justifies it |
 
 ### SaaS — Orkes Demo Platform Integration
 
