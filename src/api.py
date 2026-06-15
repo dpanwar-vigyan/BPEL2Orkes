@@ -236,18 +236,40 @@ async def convert_clean(request: Request):
     }
 
 
+async def _orkes_token(key_id: str, key_secret: str) -> str:
+    """Exchange Orkes Key ID + Key Secret for a short-lived JWT token."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            f"{ORKES_BASE_URL}/api/token",
+            json={"keyId": key_id, "keySecret": key_secret},
+            headers={"Content-Type": "application/json"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Orkes token exchange failed (HTTP {resp.status_code}): {resp.text[:500]}",
+        )
+    token = resp.json().get("token")
+    if not token:
+        raise HTTPException(status_code=502, detail="Orkes token response missing 'token' field")
+    return token
+
+
 @app.post("/api/v1/validate")
 async def validate(
     request: Request,
-    x_orkes_api_key: str = Header(..., description="Your Orkes Developer API key"),
+    x_orkes_key_id: str = Header(..., description="Orkes Application Key ID"),
+    x_orkes_key_secret: str = Header(..., description="Orkes Application Key Secret"),
 ):
     """
-    Convert BPEL XML and register the mainWorkflow on your Orkes Developer instance.
+    Convert BPEL XML, exchange Key ID + Key Secret for a JWT token, then register
+    the mainWorkflow on your Orkes Developer instance.
 
-    Pass your Orkes API key in the X-Orkes-Api-Key header.
+    Headers required:
+      X-Orkes-Key-Id     — Key ID from your Orkes Application
+      X-Orkes-Key-Secret — Key Secret from your Orkes Application
+
     The workflow is registered (PUT /api/metadata/workflow) but NOT started.
-
-    Returns the Orkes API response alongside the converted bundle.
     """
     body = await request.body()
     _read_body(body)
@@ -258,17 +280,16 @@ async def validate(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
+    token = await _orkes_token(x_orkes_key_id, x_orkes_key_secret)
     main_wf = bundle["mainWorkflow"]
 
-    # Register workflow on Orkes Developer
-    orkes_url = f"{ORKES_BASE_URL}/api/metadata/workflow"
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.put(
-                orkes_url,
+                f"{ORKES_BASE_URL}/api/metadata/workflow",
                 json=[main_wf],
                 headers={
-                    "X-Authorization": x_orkes_api_key,
+                    "X-Authorization": token,
                     "Content-Type": "application/json",
                 },
             )

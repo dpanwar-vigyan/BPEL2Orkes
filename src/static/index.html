@@ -211,9 +211,13 @@
 
     <!-- Orkes validate -->
     <div class="validate-section">
-      <label>Validate on Orkes Developer</label>
+      <label>Register on Orkes Developer — enter your Application credentials</label>
+      <div class="input-row" style="margin-bottom:6px">
+        <input type="text" id="orkes-key-id" placeholder="Key ID" autocomplete="off">
+        <input type="password" id="orkes-key-secret" placeholder="Key Secret">
+      </div>
       <div class="input-row">
-        <input type="password" id="orkes-key" placeholder="Orkes API key (X-Authorization)">
+        <span style="font-size:11px;color:var(--muted);flex:1">Orkes Console → Applications → your app → Key ID &amp; Key Secret</span>
         <button class="btn btn-success" id="validate-btn" disabled>
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
           Register on Orkes
@@ -249,7 +253,8 @@ const editorWrapper = document.getElementById('editor-wrapper');
 const copyBtn       = document.getElementById('copy-btn');
 const downloadBtn   = document.getElementById('download-btn');
 const validateBtn   = document.getElementById('validate-btn');
-const orkesKey      = document.getElementById('orkes-key');
+const orkesKeyId     = document.getElementById('orkes-key-id');
+const orkesKeySecret = document.getElementById('orkes-key-secret');
 const orkesResult   = document.getElementById('orkes-result');
 const outputPre     = document.getElementById('output-pre');
 const outputCode    = document.getElementById('output-code');
@@ -459,8 +464,9 @@ downloadBtn.addEventListener('click', () => {
 // ── Validate on Orkes ─────────────────────────────────────────────────────────
 
 validateBtn.addEventListener('click', async () => {
-  const key = orkesKey.value.trim();
-  if (!key) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ Enter your Orkes API key first.'; return; }
+  const keyId = orkesKeyId.value.trim();
+  const keySecret = orkesKeySecret.value.trim();
+  if (!keyId || !keySecret) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ Enter both Key ID and Key Secret.'; return; }
   const xml = bpelInput.value.trim();
   if (!xml) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ No BPEL input.'; return; }
 
@@ -471,7 +477,11 @@ validateBtn.addEventListener('click', async () => {
   try {
     const resp = await fetch(`${API}/api/v1/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/xml', 'X-Orkes-Api-Key': key },
+      headers: {
+        'Content-Type': 'application/xml',
+        'X-Orkes-Key-Id': keyId,
+        'X-Orkes-Key-Secret': keySecret,
+      },
       body: xml,
     });
     const data = await resp.json();
