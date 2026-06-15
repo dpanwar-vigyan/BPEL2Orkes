@@ -119,7 +119,7 @@ class Bpel2OrkesService(Stack):
                 self, "Cert",
                 f"arn:aws:acm:ap-southeast-2:835422347653:certificate/f2e98ff2-ae48-4d5c-b03d-7f69c40f9484"
                 if env_name == "staging" else
-                "arn:aws:acm:ap-southeast-2:835422347653:certificate/YOUR-PROD-CERT-ARN"
+                "arn:aws:acm:ap-southeast-2:835422347653:certificate/6f8411b4-c816-4a39-b670-99765f26eeb1"
             ),
         )
 

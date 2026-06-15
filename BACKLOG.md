@@ -104,9 +104,12 @@ Three delivery tiers — customers choose based on their risk appetite and budge
 | M-9 | XPath → JavaScript condition translator | 🔲 Planned | High priority — currently emitted as TODO comments |
 | M-10 | XPath → JSONPath `<assign>` from-expression translator | 🔲 Planned | |
 | M-11 | Selective compensation (`<compensate name="...">`) wiring | 🔲 Planned | Manual today — need automatic ordering |
-| M-12 | Correlation set → Conductor correlation task mapping | 🔲 Planned | |
+| M-12 | Correlation set → Conductor correlation task mapping | 🔲 V1.1 | Pass workflow ID as correlation key through all async calls |
 | M-13 | `<eventHandlers>` → parallel signal-listener sub-workflow | 🔲 Planned | |
 | M-14 | Partner link → worker endpoint registry lookup | 🔲 Planned | Match partner links to known service URLs |
+| M-15 | Warning: `<receive>`/`<pick>` push→pull inversion | 🔲 V1.1 | BPEL waits for ESB push; Conductor WAIT needs external POST to `/tasks/{taskId}/ack` — emit explicit warning with instruction |
+| M-16 | Warning: SOAP `<invoke>` needs worker wrapping | 🔲 V1.1 | Detect SOAP partnerLink bindings and warn that HTTP task assumes REST; SOAP envelope + WS-Security requires a dedicated worker |
+| M-17 | Warning: correlation set not mapped | 🔲 V1.1 | Emit warning per correlation set listing the variables involved and pointing to Conductor correlation docs |
 
 ---
 
