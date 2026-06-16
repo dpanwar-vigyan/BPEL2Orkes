@@ -94,7 +94,8 @@ if _SAMPLES_DIR.exists():
 
 # ── MCP server (SSE transport) ─────────────────────────────────────────────────
 # Customers add this to Claude Desktop claude_desktop_config.json:
-#   { "mcpServers": { "bpel2orkes": { "url": "https://bpel2orkes.kshetra.studio/mcp" } } }
+#   { "mcpServers": { "bpel2orkes": { "type": "http", "url": "https://bpel2orkes.kshetra.studio/mcp/" } } }
+# Note: trailing slash required — Claude Code CLI: claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/
 app.mount("/mcp", _mcp_asgi)
 
 

@@ -27,10 +27,14 @@ Hosted (no local setup needed) — add to claude_desktop_config.json:
   {
     "mcpServers": {
       "bpel2orkes": {
-        "url": "https://bpel2orkes.kshetra.studio/mcp"
+        "type": "http",
+        "url": "https://bpel2orkes.kshetra.studio/mcp/"
       }
     }
   }
+
+Or via Claude Code CLI:
+  claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/
 """
 
 from __future__ import annotations
