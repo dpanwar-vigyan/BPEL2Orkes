@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from bpel_parser import parse_bpel, BPELParseError
 from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
+from diagram_generator import generate_mermaid, generate_migration_summary
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,29 @@ async def convert_file(file: UploadFile = File(...)):
         "warningCount": len(bundle.get("warnings", [])),
         "workflowCount": bundle.get("workflowCount", 1),
         "bundle": bundle,
+    }
+
+
+@app.post("/api/v1/convert/diagram")
+async def convert_diagram(request: Request):
+    """
+    Convert BPEL XML and return a Mermaid flowchart diagram string + migration summary.
+    Render the diagram with mermaid.js on the client.
+    """
+    body = await request.body()
+    _read_body(body)
+    try:
+        bundle, ms = _convert(body)
+    except BPELParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
+
+    return {
+        "durationMs": ms,
+        "mermaid": generate_mermaid(bundle),
+        "summary": generate_migration_summary(bundle),
+        "warnings": bundle.get("warnings", []),
     }
 
 

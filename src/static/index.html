@@ -73,10 +73,14 @@
   .status-dot.err { background: var(--error); }
 
   /* ── Warnings panel ── */
-  .warnings { background: #1c1700; border: 1px solid #78350f; border-radius: 6px; margin: 12px 16px; padding: 10px 14px; font-size: 12px; color: #fde68a; }
-  .warnings h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; color: var(--warn); }
-  .warnings ul { padding-left: 14px; }
-  .warnings li { margin-bottom: 3px; line-height: 1.5; }
+  .warnings { background: #1c1700; border: 1px solid #78350f; border-radius: 6px; margin: 8px 16px; font-size: 12px; color: #fde68a; flex-shrink: 0; }
+  .warnings-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; user-select: none; }
+  .warnings-header h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--warn); flex: 1; margin: 0; }
+  .warnings-toggle { font-size: 10px; color: var(--muted); }
+  .warnings-body { padding: 0 14px 10px; display: none; }
+  .warnings-body.open { display: block; }
+  .warnings-body ul { padding-left: 14px; }
+  .warnings-body li { margin-bottom: 4px; line-height: 1.5; }
 
   /* ── Tabs (output panel) ── */
   .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--surface); }
@@ -103,6 +107,20 @@
   /* ── Empty state ── */
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 8px; }
   .empty-state .icon { font-size: 36px; opacity: 0.3; }
+
+  /* ── Summary bar ── */
+  .summary-bar { display:flex; gap:16px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+  .summary-stat { display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .summary-stat .num { font-size:20px; font-weight:700; line-height:1; }
+  .summary-stat .lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .num-green { color:var(--success); }
+  .num-amber { color:var(--warn); }
+  .num-blue  { color:#818cf8; }
+  .num-white { color:var(--text); }
+
+  /* ── Diagram panel ── */
+  .diagram-wrap { flex:1; overflow:auto; padding:20px; display:flex; justify-content:center; }
+  .diagram-wrap svg { max-width:100%; height:auto; }
 
   /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -181,7 +199,8 @@
     </div>
 
     <div class="tabs">
-      <div class="tab active" data-tab="main">Main Workflow</div>
+      <div class="tab active" data-tab="diagram">Flow Diagram</div>
+      <div class="tab" data-tab="main">Main Workflow</div>
       <div class="tab" data-tab="subs">Sub-Workflows</div>
       <div class="tab" data-tab="full">Full Bundle</div>
     </div>
@@ -199,6 +218,15 @@
       <span id="wf-count" style="font-size:12px;color:var(--muted)"></span>
     </div>
 
+    <!-- Summary bar (hidden until conversion) -->
+    <div class="summary-bar" id="summary-bar" style="display:none">
+      <div class="summary-stat"><span class="num num-white" id="sum-total">0</span><span class="lbl">Tasks</span></div>
+      <div class="summary-stat"><span class="num num-green" id="sum-auto">0</span><span class="lbl">Auto-converted</span></div>
+      <div class="summary-stat"><span class="num num-amber" id="sum-work">0</span><span class="lbl">Needs Work</span></div>
+      <div class="summary-stat"><span class="num num-blue" id="sum-sub">0</span><span class="lbl">Sub-Workflows</span></div>
+      <div class="summary-stat"><span class="num num-amber" id="sum-warn">0</span><span class="lbl">Warnings</span></div>
+    </div>
+
     <div id="warnings-container"></div>
 
     <div class="panel-body">
@@ -206,12 +234,23 @@
         <div class="icon">⚡</div>
         <span>Convert a BPEL file to see output</span>
       </div>
+      <!-- Diagram tab -->
+      <div class="diagram-wrap" id="diagram-panel" style="display:none">
+        <div id="mermaid-diagram"></div>
+      </div>
+      <!-- JSON tabs -->
       <pre id="output-pre" style="display:none"><code id="output-code"></code></pre>
     </div>
 
-    <!-- Orkes validate -->
-    <div class="validate-section">
-      <label>Register on Orkes — enter your cluster URL and Application credentials</label>
+    <!-- Orkes validate (collapsed by default) -->
+    <div class="validate-section" style="padding:0">
+      <div style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;border-top:1px solid var(--border)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▼':'▲'">
+        <svg style="width:14px;height:14px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span style="font-size:12px;font-weight:500;flex:1">Register on Orkes Developer</span>
+        <span style="font-size:10px;color:var(--muted)">▼</span>
+      </div>
+      <div style="display:none;padding:0 16px 12px">
+      <label>Cluster URL and Application credentials</label>
       <div class="input-row" style="margin-bottom:6px">
         <input type="text" id="orkes-base-url" placeholder="Orkes cluster URL" value="https://developer.orkescloud.com" autocomplete="off" style="flex:2">
       </div>
@@ -227,6 +266,7 @@
         </button>
       </div>
       <div class="orkes-result" id="orkes-result"></div>
+      </div>
     </div>
 
     <div class="statusbar">
@@ -238,6 +278,11 @@
 
 </div>
 
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+window._mermaid = mermaid;
+</script>
 <script>
 const API = '';  // same origin
 
@@ -252,7 +297,8 @@ fetch('/api/v1/health').then(r => r.json()).then(d => {
 
 // State
 let _bundle = null;
-let _activeTab = 'main';
+let _mermaidSrc = null;
+let _activeTab = 'diagram';
 
 // Elements
 const fileInput     = document.getElementById('file-input');
@@ -272,6 +318,8 @@ const orkesResult   = document.getElementById('orkes-result');
 const outputPre     = document.getElementById('output-pre');
 const outputCode    = document.getElementById('output-code');
 const emptyOutput   = document.getElementById('empty-output');
+const diagramPanel  = document.getElementById('diagram-panel');
+const summaryBar    = document.getElementById('summary-bar');
 const warningsContainer = document.getElementById('warnings-container');
 const wfCount       = document.getElementById('wf-count');
 const inputDot      = document.getElementById('input-dot');
@@ -301,19 +349,41 @@ function setOutputStatus(state, msg) {
   outputStatus.textContent = msg;
 }
 
-function showOutput(json, tab) {
+function showOutput(json) {
   const text = JSON.stringify(json, null, 2);
   outputCode.textContent = text;
   emptyOutput.style.display = 'none';
+  diagramPanel.style.display = 'none';
   outputPre.style.display = 'block';
   copyBtn.disabled = false;
   downloadBtn.disabled = false;
   validateBtn.disabled = false;
 }
 
+async function showDiagram() {
+  if (!_mermaidSrc) return;
+  emptyOutput.style.display = 'none';
+  outputPre.style.display = 'none';
+  diagramPanel.style.display = 'flex';
+  copyBtn.disabled = false;
+  downloadBtn.disabled = false;
+  validateBtn.disabled = false;
+  const el = document.getElementById('mermaid-diagram');
+  el.innerHTML = '<div style="color:var(--muted);padding:20px">Rendering diagram…</div>';
+  try {
+    const m = window._mermaid;
+    if (!m) { el.innerHTML = '<div style="color:var(--error)">Mermaid not loaded yet — try again in a moment</div>'; return; }
+    const { svg } = await m.render('bpel-flow-' + Date.now(), _mermaidSrc);
+    el.innerHTML = svg;
+  } catch(e) {
+    el.innerHTML = `<pre style="color:var(--error);font-size:11px;white-space:pre-wrap">${escHtml(e.message)}\n\n${escHtml(_mermaidSrc)}</pre>`;
+  }
+}
+
 function renderTab() {
-  if (!_bundle) return;
-  if (_activeTab === 'main') showOutput(_bundle.bundle.mainWorkflow);
+  if (!_bundle && !_mermaidSrc) return;
+  if (_activeTab === 'diagram') showDiagram();
+  else if (_activeTab === 'main') showOutput(_bundle.bundle.mainWorkflow);
   else if (_activeTab === 'subs') showOutput({
     subWorkflows: _bundle.bundle.subWorkflows,
     compensationFlows: _bundle.bundle.compensationFlows,
@@ -328,7 +398,14 @@ function renderWarnings(warnings) {
     return;
   }
   const items = warnings.map(w => `<li>${escHtml(w)}</li>`).join('');
-  warningsContainer.innerHTML = `<div class="warnings"><h3>⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''}</h3><ul>${items}</ul></div>`;
+  warningsContainer.innerHTML = `
+    <div class="warnings">
+      <div class="warnings-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.warnings-toggle').textContent=this.nextElementSibling.classList.contains('open')?'▲':'▼'">
+        <h3>⚠ ${warnings.length} warning${warnings.length > 1 ? 's' : ''} — click to expand</h3>
+        <span class="warnings-toggle">▼</span>
+      </div>
+      <div class="warnings-body"><ul>${items}</ul></div>
+    </div>`;
 }
 
 function escHtml(s) {
@@ -390,8 +467,12 @@ clearBtn.addEventListener('click', () => {
   dropZone.style.display = '';
   editorWrapper.style.display = 'none';
   _bundle = null;
+  _mermaidSrc = null;
   outputPre.style.display = 'none';
+  diagramPanel.style.display = 'none';
+  summaryBar.style.display = 'none';
   emptyOutput.style.display = 'flex';
+  document.getElementById('mermaid-diagram').innerHTML = '';
   warningsContainer.innerHTML = '';
   copyBtn.disabled = true;
   downloadBtn.disabled = true;
@@ -412,21 +493,36 @@ convertBtn.addEventListener('click', async () => {
   setConverting(true);
   setOutputStatus('', 'Converting…');
   orkesResult.textContent = '';
+  _mermaidSrc = null;
 
   try {
-    const resp = await fetch(`${API}/api/v1/convert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/xml' },
-      body: xml,
-    });
-    const data = await resp.json();
+    // Fetch bundle + diagram in parallel
+    const [resp, diagResp] = await Promise.all([
+      fetch(`${API}/api/v1/convert`, { method:'POST', headers:{'Content-Type':'application/xml'}, body: xml }),
+      fetch(`${API}/api/v1/convert/diagram`, { method:'POST', headers:{'Content-Type':'application/xml'}, body: xml }),
+    ]);
 
+    const data = await resp.json();
     if (!resp.ok) {
       setOutputStatus('err', `Error ${resp.status}: ${data.detail || 'conversion failed'}`);
       return;
     }
 
     _bundle = data;
+
+    if (diagResp.ok) {
+      const diagData = await diagResp.json();
+      _mermaidSrc = diagData.mermaid;
+      // Populate summary bar
+      const s = diagData.summary || {};
+      document.getElementById('sum-total').textContent = s.total ?? '-';
+      document.getElementById('sum-auto').textContent  = s.autoConverted ?? '-';
+      document.getElementById('sum-work').textContent  = s.needsWork ?? '-';
+      document.getElementById('sum-sub').textContent   = s.subWorkflows ?? '-';
+      document.getElementById('sum-warn').textContent  = s.warningCount ?? '-';
+      summaryBar.style.display = 'flex';
+    }
+
     renderWarnings(data.bundle?.warnings);
     renderTab();
 
