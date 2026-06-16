@@ -46,10 +46,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from bpel_parser import parse_bpel, BPELParseError
 from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
 from diagram_generator import generate_migration_summary
+from auth import resolve_mcp_caller, increment_usage
 
 import httpx
 
@@ -67,23 +69,14 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
-def convert_bpel(bpel_xml: str) -> dict:
-    """
-    Convert IBM BPEL XML to an Orkes Conductor workflow bundle.
+def _caller_api_key() -> str | None:
+    """Read X-Api-Key from the current MCP HTTP request (stdio mode has no headers)."""
+    headers = get_http_headers()
+    return headers.get("x-api-key") or headers.get("X-Api-Key")
 
-    Args:
-        bpel_xml: Raw BPEL XML string (WS-BPEL 2.0, including IBM BPELX extensions)
 
-    Returns:
-        A dict containing:
-        - mainWorkflow: Clean Conductor workflow definition ready to register
-        - subWorkflows: List of sub-workflow definitions (from BPEL scopes)
-        - compensationFlows: Compensation handler workflows
-        - faultHandlerFlows: Fault handler workflows
-        - warnings: List of items needing manual developer attention
-        - summary: Counts of auto-converted vs needs-work tasks
-    """
+def _convert_bpel_core(bpel_xml: str) -> dict:
+    """Pure conversion logic, no auth/quota — used by both convert_bpel and validate_on_orkes."""
     try:
         ast = parse_bpel(bpel_xml.encode())
     except BPELParseError as e:
@@ -110,6 +103,37 @@ def convert_bpel(bpel_xml: str) -> dict:
 
 
 @mcp.tool()
+def convert_bpel(bpel_xml: str) -> dict:
+    """
+    Convert IBM BPEL XML to an Orkes Conductor workflow bundle.
+
+    Requires an X-Api-Key header (same key used for the REST API and Web UI —
+    get one free at https://bpel2orkes.kshetra.studio). Each call uses one
+    conversion credit.
+
+    Args:
+        bpel_xml: Raw BPEL XML string (WS-BPEL 2.0, including IBM BPELX extensions)
+
+    Returns:
+        A dict containing:
+        - mainWorkflow: Clean Conductor workflow definition ready to register
+        - subWorkflows: List of sub-workflow definitions (from BPEL scopes)
+        - compensationFlows: Compensation handler workflows
+        - faultHandlerFlows: Fault handler workflows
+        - warnings: List of items needing manual developer attention
+        - summary: Counts of auto-converted vs needs-work tasks
+    """
+    user, error = resolve_mcp_caller(_caller_api_key())
+    if error:
+        return {"error": error}
+
+    result = _convert_bpel_core(bpel_xml)
+    if "error" not in result:
+        increment_usage(user["userId"])
+    return result
+
+
+@mcp.tool()
 async def validate_on_orkes(
     bpel_xml: str,
     key_id: str,
@@ -125,13 +149,21 @@ async def validate_on_orkes(
         key_secret: Orkes Application Key Secret
         orkes_base_url: Base URL of your Orkes cluster (default: https://developer.orkescloud.com)
 
+    Requires an X-Api-Key header (same key used for the REST API and Web UI).
+    Uses one conversion credit for the whole convert+register operation.
+
     Returns:
         Registration result including orkesOk (bool), orkesStatus (HTTP code),
         workflowName, and the converted bundle.
     """
-    bundle_result = convert_bpel(bpel_xml)
+    user, error = resolve_mcp_caller(_caller_api_key())
+    if error:
+        return {"error": error}
+
+    bundle_result = _convert_bpel_core(bpel_xml)
     if "error" in bundle_result:
         return bundle_result
+    increment_usage(user["userId"])
 
     base_url = orkes_base_url.rstrip("/")
 

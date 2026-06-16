@@ -141,26 +141,66 @@ def upgrade_user(user_id: str, tier: str) -> dict:
 
 # ── Quota middleware helpers ───────────────────────────────────────────────────
 
-def check_quota(user: dict) -> None:
-    """Raise 429 if user has exhausted their credits. Unlimited tiers always pass."""
+def quota_status(user: dict) -> Optional[dict]:
+    """
+    Returns None if the user has quota remaining (or is unlimited), else a dict
+    describing the exhausted state — shared shape used by both the FastAPI 429
+    response and the MCP tool error payload, so both surfaces report identically.
+    """
     if user["tier"] == "starter":
-        return
+        return None
     credits_total = user.get("creditsTotal")
     if credits_total == "unlimited":
-        return
+        return None
     used = int(user.get("creditsUsed", 0))
     total = int(credits_total or 0)
     if used >= total:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error": "quota_exceeded",
-                "message": f"You've used all {total} conversions on the {user['tier']} plan.",
-                "creditsUsed": used,
-                "creditsTotal": total,
-                "upgradeUrl": "https://bpel2orkes.kshetra.studio/dashboard",
-            },
+        return {
+            "error": "quota_exceeded",
+            "message": f"You've used all {total} conversions on the {user['tier']} plan.",
+            "creditsUsed": used,
+            "creditsTotal": total,
+            "upgradeUrl": "https://bpel2orkes.kshetra.studio/dashboard",
+        }
+    return None
+
+
+def check_quota(user: dict) -> None:
+    """Raise 429 if user has exhausted their credits. Unlimited tiers always pass."""
+    status = quota_status(user)
+    if status:
+        raise HTTPException(status_code=429, detail=status)
+
+
+# ── MCP tool auth — same API key, no FastAPI Request available ────────────────
+
+def resolve_mcp_caller(api_key: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
+    """
+    Resolve and quota-check an MCP tool caller from their X-Api-Key header.
+    Returns (user, None) on success, or (None, error_message) on failure —
+    the error_message is meant to be returned directly as {"error": ...} from
+    the calling tool, since MCP tools can't raise HTTPException like the REST API.
+    """
+    if _auth_bypassed():
+        return {"userId": "local", "tier": "starter", "creditsUsed": 0, "creditsTotal": "unlimited"}, None
+
+    if not api_key:
+        return None, (
+            "Missing X-Api-Key header. Sign in at https://bpel2orkes.kshetra.studio "
+            "to get your free API key, then add it to your MCP config, e.g.: "
+            'claude mcp add --transport http --header "X-Api-Key: your_key" '
+            "bpel2orkes https://bpel2orkes.kshetra.studio/mcp/"
         )
+
+    user = get_user_by_api_key(api_key)
+    if not user:
+        return None, "Invalid API key."
+
+    status = quota_status(user)
+    if status:
+        return None, status["message"] + f" Upgrade at {status['upgradeUrl']}"
+
+    return user, None
 
 
 # ── FastAPI dependency: resolve caller from X-Api-Key or session ──────────────
