@@ -11,6 +11,7 @@ Endpoints:
   GET  /api/v1/health          — liveness check
   GET  /api/v1/version         — version info
   GET  /                       — Web UI
+  GET  /mcp/sse                — MCP SSE endpoint (Claude Desktop / MCP clients)
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from bpel_parser import parse_bpel, BPELParseError
 from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
 from diagram_generator import generate_mermaid, generate_migration_summary
+from mcp_server import mcp
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -79,6 +81,11 @@ if (_STATIC_DIR / "assets").exists():
 _SAMPLES_DIR = Path(__file__).parent.parent / "samples"
 if _SAMPLES_DIR.exists():
     app.mount("/samples", StaticFiles(directory=str(_SAMPLES_DIR)), name="samples")
+
+# ── MCP server (SSE transport) ─────────────────────────────────────────────────
+# Customers add this to Claude Desktop claude_desktop_config.json:
+#   { "mcpServers": { "bpel2orkes": { "url": "https://bpel2orkes.kshetra.studio/mcp" } } }
+app.mount("/mcp", mcp.http_app(transport="sse"))
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)

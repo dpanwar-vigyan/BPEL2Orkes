@@ -23,8 +23,14 @@ Claude Desktop config (~/.claude/claude_desktop_config.json):
     }
   }
 
-Or point at the hosted API (no local setup needed):
-  Use the HTTP transport via mcp.bpel2orkes.kshetra.studio (V1.1)
+Hosted (no local setup needed) — add to claude_desktop_config.json:
+  {
+    "mcpServers": {
+      "bpel2orkes": {
+        "url": "https://bpel2orkes.kshetra.studio/mcp"
+      }
+    }
+  }
 """
 
 from __future__ import annotations
