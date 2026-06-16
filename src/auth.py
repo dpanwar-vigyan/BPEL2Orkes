@@ -21,6 +21,14 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from fastapi import Header, HTTPException, Request
 
+def _session_user(request: Request) -> Optional[dict]:
+    """Resolve a user from the Web UI's signed session cookie (OAuth sign-in)."""
+    from oauth import get_session
+    session = get_session(request)
+    if not session:
+        return None
+    return get_user_by_id(session["userId"])
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 ENV = os.getenv("BPEL2ORKES_ENV", "local")
@@ -44,12 +52,13 @@ def _table():
     return ddb.Table(TABLE_NAME)
 
 
-def _table_exists() -> bool:
-    try:
-        _table().load()
-        return True
-    except Exception:
-        return False
+def _auth_bypassed() -> bool:
+    """
+    Auth is only bypassed for explicit local development (no env var set, or
+    set to "local"). Any AWS/DynamoDB error on staging or production must
+    raise, not silently fall back to open access — fail closed, not open.
+    """
+    return ENV == "local"
 
 
 # ── User operations ────────────────────────────────────────────────────────────
@@ -101,8 +110,10 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
     return resp.get("Item")
 
 
-def increment_usage(user_id: str) -> dict:
-    """Atomically increment creditsUsed. Returns updated user record."""
+def increment_usage(user_id: str) -> Optional[dict]:
+    """Atomically increment creditsUsed. No-op for the local-dev bypass pseudo-user."""
+    if user_id == "local":
+        return None
     resp = _table().update_item(
         Key={"userId": user_id},
         UpdateExpression="SET creditsUsed = creditsUsed + :one",
@@ -155,40 +166,46 @@ def check_quota(user: dict) -> None:
 # ── FastAPI dependency: resolve caller from X-Api-Key or session ──────────────
 
 async def require_api_key(
+    request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-Api-Key"),
 ) -> dict:
     """
-    FastAPI dependency. Resolves caller from X-Api-Key header.
-    Raises 401 if missing/invalid, 429 if over quota.
+    FastAPI dependency. Resolves caller from X-Api-Key header (REST API / MCP)
+    or the signed session cookie (Web UI, set on OAuth sign-in).
+    Raises 401 if neither is present/valid, 429 if over quota.
     """
-    if not _table_exists():
-        # Auth not yet set up (local dev without DynamoDB) — allow through
+    if _auth_bypassed():
+        # Local dev only — no DynamoDB required to test the convert pipeline
         return {"userId": "local", "tier": "starter", "creditsUsed": 0, "creditsTotal": "unlimited"}
 
-    if not x_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": "missing_api_key",
-                "message": "Sign in at https://bpel2orkes.kshetra.studio to get your free API key, then pass it as X-Api-Key header.",
-            },
-        )
-
-    user = get_user_by_api_key(x_api_key)
-    if not user:
-        raise HTTPException(status_code=401, detail={"error": "invalid_api_key", "message": "API key not found."})
+    user = None
+    if x_api_key:
+        user = get_user_by_api_key(x_api_key)
+        if not user:
+            raise HTTPException(status_code=401, detail={"error": "invalid_api_key", "message": "API key not found."})
+    else:
+        user = _session_user(request)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "not_authenticated",
+                    "message": "Sign in at https://bpel2orkes.kshetra.studio to get your free API key, then pass it as X-Api-Key header — or sign in via the Web UI.",
+                },
+            )
 
     check_quota(user)
     return user
 
 
 async def optional_api_key(
+    request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-Api-Key"),
 ) -> Optional[dict]:
-    """Like require_api_key but returns None instead of raising if no key provided."""
-    if not x_api_key or not _table_exists():
+    """Like require_api_key but returns None instead of raising if no key/session provided."""
+    if _auth_bypassed():
         return None
-    user = get_user_by_api_key(x_api_key)
+    user = get_user_by_api_key(x_api_key) if x_api_key else _session_user(request)
     if user:
         check_quota(user)
     return user
