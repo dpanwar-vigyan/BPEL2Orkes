@@ -94,15 +94,12 @@ async def google_callback(request: Request, code: str, state: str):
         client_id=GOOGLE_CLIENT_ID, client_secret=GOOGLE_CLIENT_SECRET,
         redirect_uri=GOOGLE_REDIRECT_URI, state=stored_state,
     )
-    async with httpx.AsyncClient() as http:
-        token = await client.fetch_token(
+    async with client:
+        await client.fetch_token(
             "https://oauth2.googleapis.com/token", code=code,
-            grant_type="authorization_code", http=http,
+            grant_type="authorization_code",
         )
-        userinfo_resp = await http.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {token['access_token']}"},
-        )
+        userinfo_resp = await client.get("https://www.googleapis.com/oauth2/v3/userinfo")
     info = userinfo_resp.json()
     user = get_or_create_user("google", info["sub"], info.get("email", ""), info.get("name", ""))
     response = RedirectResponse("/dashboard")
