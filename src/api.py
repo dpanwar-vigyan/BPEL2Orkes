@@ -85,7 +85,7 @@ if _SAMPLES_DIR.exists():
 # ── MCP server (SSE transport) ─────────────────────────────────────────────────
 # Customers add this to Claude Desktop claude_desktop_config.json:
 #   { "mcpServers": { "bpel2orkes": { "url": "https://bpel2orkes.kshetra.studio/mcp" } } }
-app.mount("/mcp", mcp.http_app(transport="sse"))
+app.mount("/mcp", mcp.http_app(transport="streamable-http"))
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
