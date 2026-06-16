@@ -46,6 +46,12 @@ docker tag "${REPO}:${IMAGE_TAG}" "${ECR_URI}:${ENV}-latest"
 docker push "${ECR_URI}:${IMAGE_TAG}"
 docker push "${ECR_URI}:${ENV}-latest"
 
+# For production also push as prod-latest (what ECS task definition references)
+if [[ "$ENV" == "production" ]]; then
+  docker tag "${REPO}:${IMAGE_TAG}" "${ECR_URI}:prod-latest"
+  docker push "${ECR_URI}:prod-latest"
+fi
+
 # 4. Force ECS to redeploy with new image
 echo "→ Triggering ECS redeploy..."
 aws ecs update-service \
