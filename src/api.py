@@ -22,9 +22,9 @@ import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import sys
@@ -35,6 +35,8 @@ from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
 from diagram_generator import generate_mermaid, generate_migration_summary
 from mcp_server import mcp
+from auth import require_api_key, increment_usage, optional_api_key
+from oauth import router as oauth_router, get_session
 
 # ── MCP ASGI app (must be created before FastAPI so lifespan can be wired) ─────
 _mcp_asgi = mcp.http_app(transport="streamable-http", path="/")
@@ -48,6 +50,10 @@ async def _lifespan(app: FastAPI):
 
 VERSION = "0.2.0"
 ENV = os.getenv("BPEL2ORKES_ENV", "local")
+BASE_URL = {
+    "production": "https://bpel2orkes.kshetra.studio",
+    "staging":    "https://staging.bpel2orkes.kshetra.studio",
+}.get(ENV, "http://localhost:8000")
 
 app = FastAPI(
     title="BPEL2Orkes",
@@ -97,6 +103,7 @@ if _SAMPLES_DIR.exists():
 #   { "mcpServers": { "bpel2orkes": { "type": "http", "url": "https://bpel2orkes.kshetra.studio/mcp/" } } }
 # Note: trailing slash required — Claude Code CLI: claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/
 app.mount("/mcp", _mcp_asgi)
+app.include_router(oauth_router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -105,6 +112,15 @@ def ui():
     if not index.exists():
         return HTMLResponse("<h1>BPEL2Orkes API</h1><p>UI not found.</p>", status_code=200)
     return HTMLResponse(index.read_text(encoding="utf-8"))
+
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard(request: Request):
+    session = get_session(request)
+    if not session:
+        return RedirectResponse("/auth/google")
+    page = _STATIC_DIR / "dashboard.html"
+    return HTMLResponse(page.read_text(encoding="utf-8"))
 
 
 # ── Request size guard ─────────────────────────────────────────────────────────
@@ -174,7 +190,7 @@ async def parse(request: Request):
 
 
 @app.post("/api/v1/convert")
-async def convert(request: Request):
+async def convert(request: Request, _user: dict = Depends(require_api_key)):
     """
     Convert BPEL XML to a clean Orkes Conductor workflow bundle.
 
@@ -197,6 +213,7 @@ async def convert(request: Request):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
+    increment_usage(_user["userId"])
     return {
         "durationMs": ms,
         "warningCount": len(bundle.get("warnings", [])),
@@ -206,7 +223,7 @@ async def convert(request: Request):
 
 
 @app.post("/api/v1/convert/file")
-async def convert_file(file: UploadFile = File(...)):
+async def convert_file(file: UploadFile = File(...), _user: dict = Depends(require_api_key)):
     """Convert a BPEL file upload to a Conductor workflow bundle (multipart/form-data)."""
     if file.size and file.size > MAX_BPEL_BYTES:
         raise HTTPException(status_code=413, detail="File too large.")
@@ -219,6 +236,7 @@ async def convert_file(file: UploadFile = File(...)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
+    increment_usage(_user["userId"])
     return {
         "filename": file.filename,
         "durationMs": ms,
@@ -229,7 +247,7 @@ async def convert_file(file: UploadFile = File(...)):
 
 
 @app.post("/api/v1/convert/diagram")
-async def convert_diagram(request: Request):
+async def convert_diagram(request: Request, _user: dict = Depends(optional_api_key)):
     """
     Convert BPEL XML and return a Mermaid flowchart diagram string + migration summary.
     Render the diagram with mermaid.js on the client.
@@ -252,7 +270,7 @@ async def convert_diagram(request: Request):
 
 
 @app.post("/api/v1/convert/clean")
-async def convert_clean(request: Request):
+async def convert_clean(request: Request, _user: dict = Depends(optional_api_key)):
     """
     Same as /convert but the response contains only the mainWorkflow JSON,
     ready to copy-paste into Orkes or register via the Orkes API.
@@ -300,6 +318,7 @@ async def _orkes_token(key_id: str, key_secret: str, base_url: str) -> str:
 @app.post("/api/v1/validate")
 async def validate(
     request: Request,
+    _user: dict = Depends(require_api_key),
     x_orkes_key_id: str = Header(..., description="Orkes Application Key ID"),
     x_orkes_key_secret: str = Header(..., description="Orkes Application Key Secret"),
     x_orkes_base_url: str = Header(default=None, description="Orkes cluster URL (default: developer.orkescloud.com)"),
@@ -355,6 +374,93 @@ async def validate(
         "workflowName": main_wf.get("name"),
         "bundle": bundle,
     }
+
+
+# ── Dashboard helpers ──────────────────────────────────────────────────────────
+
+@app.get("/api/v1/my-key")
+async def my_key(request: Request):
+    """Return the full (unmasked) API key for the signed-in user."""
+    from oauth import get_session as _gs
+    from auth import get_user_by_id
+    session = _gs(request)
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_user_by_id(session["userId"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return {"apiKey": user["apiKey"]}
+
+
+@app.post("/api/v1/checkout")
+async def checkout(request: Request):
+    """Create a Stripe Checkout session for tier upgrade."""
+    import stripe as _stripe
+    from oauth import get_session as _gs
+    from auth import get_user_by_id, TIERS
+
+    session = _gs(request)
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    body = await request.json()
+    tier = body.get("tier", "developer")
+    if tier not in TIERS or TIERS[tier]["price"] == 0:
+        raise HTTPException(status_code=400, detail="Invalid tier")
+
+    stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
+    if not stripe_key:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    _stripe.api_key = stripe_key
+    base = ORKES_BASE_URL.replace("developer.orkescloud.com", "bpel2orkes.kshetra.studio")
+    checkout_session = _stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "product_data": {"name": f"BPEL2Orkes {tier.title()} Plan"},
+                "unit_amount": TIERS[tier]["price"] * 100,
+            },
+            "quantity": 1,
+        }],
+        mode="payment",
+        success_url=f"{BASE_URL}/dashboard?upgraded=1",
+        cancel_url=f"{BASE_URL}/dashboard",
+        client_reference_id=session["userId"],
+        customer_email=session["email"],
+    )
+    return {"url": checkout_session.url}
+
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """Stripe webhook — upgrades user tier on successful payment."""
+    import stripe as _stripe
+    from auth import upgrade_user
+
+    stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    if not stripe_key:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    _stripe.api_key = stripe_key
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig, webhook_secret)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    if event["type"] == "checkout.session.completed":
+        sess = event["data"]["object"]
+        user_id = sess.get("client_reference_id")
+        amount = sess.get("amount_total", 0)
+        tier = "developer" if amount <= 1000 else "starter"
+        if user_id:
+            upgrade_user(user_id, tier)
+
+    return {"received": True}
 
 
 # ── Local dev entrypoint ───────────────────────────────────────────────────────

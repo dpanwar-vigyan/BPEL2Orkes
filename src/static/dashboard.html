@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPEL2Orkes — Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2e3147;
+    --accent: #6c63ff; --accent-hover: #8b84ff;
+    --success: #22c55e; --warn: #f59e0b; --error: #ef4444;
+    --text: #e2e8f0; --muted: #94a3b8; --code-bg: #111827;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", "Fira Code", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header h1 span { color: var(--accent); }
+  .header-links { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+  .header-links a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  .header-links a:hover { color: var(--text); }
+  .container { max-width: 680px; margin: 48px auto; padding: 0 24px; }
+  h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
+  .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 12px; }
+  .stat-row { display: flex; gap: 24px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .num { font-size: 28px; font-weight: 800; line-height: 1; }
+  .stat .lbl { font-size: 11px; color: var(--muted); }
+  .num-green { color: var(--success); }
+  .num-amber { color: var(--warn); }
+  .tier-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .tier-free { background: #1e3a5f; color: #93c5fd; }
+  .tier-developer { background: #2d2a6e; color: #a5b4fc; }
+  .tier-starter { background: #166534; color: #86efac; }
+  .api-key-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .api-key-display { font-family: var(--mono); font-size: 13px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; flex: 1; color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: background 0.15s; text-decoration: none; }
+  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: #252840; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-upgrade { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+  .btn-upgrade:hover { opacity: 0.9; }
+  .progress-wrap { margin-top: 12px; }
+  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+  .progress-label { font-size: 11px; color: var(--muted); }
+  .copy-feedback { font-size: 11px; color: var(--success); margin-left: 8px; opacity: 0; transition: opacity 0.2s; }
+  .copy-feedback.show { opacity: 1; }
+  .upgrade-card { background: linear-gradient(135deg, #1c1033, #2d2a6e); border: 1px solid #4338ca; }
+  .upgrade-card h3 { color: #a5b4fc; }
+  .upgrade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .plan { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .plan.current { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .plan-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+  .plan-price { font-size: 20px; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
+  .plan-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .loading { color: var(--muted); padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BPEL<span>2</span>Orkes</h1>
+  <div class="header-links">
+    <a href="/">← Converter</a>
+    <a href="/auth/logout">Sign out</a>
+  </div>
+</header>
+
+<div class="container" id="app">
+  <div class="loading">Loading your dashboard…</div>
+</div>
+
+<script>
+(async () => {
+  const app = document.getElementById('app');
+
+  // Load user
+  const resp = await fetch('/api/v1/me');
+  if (!resp.ok) {
+    window.location.href = '/';
+    return;
+  }
+  const user = await resp.json();
+
+  const creditsTotal = user.creditsTotal === 'unlimited' ? '∞' : user.creditsTotal;
+  const creditsLeft = user.creditsTotal === 'unlimited' ? '∞' : (user.creditsTotal - user.creditsUsed);
+  const pct = user.creditsTotal === 'unlimited' ? 20 : Math.round((user.creditsUsed / user.creditsTotal) * 100);
+  const barColor = pct >= 90 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#22c55e';
+
+  const tierLabel = {'free':'Free','developer':'Developer','starter':'Starter'}[user.tier] || user.tier;
+  const tierClass = `tier-${user.tier}`;
+
+  app.innerHTML = `
+    <h2>Welcome back, ${esc(user.name.split(' ')[0])}</h2>
+    <div class="subtitle">${esc(user.email)}</div>
+
+    <!-- Usage card -->
+    <div class="card">
+      <h3>Usage &amp; Plan</h3>
+      <div class="stat-row" style="margin-bottom:16px">
+        <div class="stat">
+          <span class="num num-green">${creditsLeft}</span>
+          <span class="lbl">Conversions left</span>
+        </div>
+        <div class="stat">
+          <span class="num">${user.creditsUsed}</span>
+          <span class="lbl">Used</span>
+        </div>
+        <div class="stat" style="margin-left:auto;align-items:flex-end">
+          <span class="tier-badge ${tierClass}">${tierLabel}</span>
+        </div>
+      </div>
+      ${user.creditsTotal !== 'unlimited' ? `
+      <div class="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="progress-label">${user.creditsUsed} of ${creditsTotal} conversions used</div>
+      </div>` : '<div style="font-size:12px;color:var(--success)">✓ Unlimited conversions</div>'}
+    </div>
+
+    <!-- API Key card -->
+    <div class="card">
+      <h3>Your API Key</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        Use this key to access the REST API and MCP server. Keep it secret.
+      </div>
+      <div class="api-key-row">
+        <div class="api-key-display" id="key-display">${esc(user.apiKey)}</div>
+        <button class="btn btn-secondary" onclick="revealKey()">Show</button>
+        <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
+        <span class="copy-feedback" id="copy-fb">Copied!</span>
+      </div>
+      <div style="margin-top:14px;font-size:12px;color:var(--muted)">
+        <strong style="color:var(--text)">REST API:</strong>
+        <code style="background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:11px">X-Api-Key: your_key</code><br><br>
+        <strong style="color:var(--text)">Claude Code MCP:</strong><br>
+        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">claude mcp add --transport http --header "X-Api-Key: your_key" bpel2orkes https://bpel2orkes.kshetra.studio/mcp/</code><br>
+        <strong style="color:var(--text)">Claude Desktop MCP:</strong><br>
+        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "type": "http", "url": "https://bpel2orkes.kshetra.studio/mcp/", "headers": { "X-Api-Key": "your_key" } } } }</code>
+      </div>
+    </div>
+
+    ${user.tier === 'free' || user.tier === 'developer' ? `
+    <!-- Upgrade card -->
+    <div class="card upgrade-card">
+      <h3>Upgrade Your Plan</h3>
+      <div class="upgrade-grid">
+        <div class="plan ${user.tier === 'free' ? 'current' : ''}">
+          <div class="plan-name">Free ${user.tier === 'free' ? '← you' : ''}</div>
+          <div class="plan-price">$0</div>
+          <div class="plan-desc">3 lifetime conversions<br>API + MCP access<br>No card required</div>
+        </div>
+        <div class="plan ${user.tier === 'developer' ? 'current' : ''}">
+          <div class="plan-name">Developer ${user.tier === 'developer' ? '← you' : ''}</div>
+          <div class="plan-price">$10 <span style="font-size:12px;font-weight:400;color:var(--muted)">one-off</span></div>
+          <div class="plan-desc">30 conversions<br>API + MCP access<br>Priority support</div>
+        </div>
+      </div>
+      ${user.tier === 'free' ? `
+      <button class="btn btn-upgrade" onclick="checkout('developer')" style="margin-right:8px">
+        Upgrade to Developer — $10
+      </button>` : ''}
+      <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" class="btn btn-secondary">
+        Starter ($49/mo) — contact us
+      </a>
+    </div>` : ''}
+  `;
+
+  // Full key (fetched separately so we don't expose it in initial load)
+  let _fullKey = null;
+
+  window.revealKey = async () => {
+    if (!_fullKey) {
+      const r = await fetch('/api/v1/my-key', { credentials: 'include' });
+      const d = await r.json();
+      _fullKey = d.apiKey;
+    }
+    document.getElementById('key-display').textContent = _fullKey;
+  };
+
+  window.copyKey = async () => {
+    if (!_fullKey) await window.revealKey();
+    await navigator.clipboard.writeText(_fullKey);
+    const fb = document.getElementById('copy-fb');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2000);
+  };
+
+  window.checkout = async (tier) => {
+    const r = await fetch('/api/v1/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.url) window.location.href = d.url;
+    else alert('Checkout error: ' + (d.error || 'unknown'));
+  };
+})();
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
