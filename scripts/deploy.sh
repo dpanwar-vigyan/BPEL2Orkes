@@ -14,8 +14,8 @@ ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO}"
 TAG=$(git rev-parse --short HEAD)
 
 if [[ "$ENV" == "production" ]]; then
-  CLUSTER="bpel2orkes-prod"
-  SERVICE="bpel2orkes-prod"
+  CLUSTER="bpel2orkes-production"
+  SERVICE="bpel2orkes-production"
   IMAGE_TAG="prod-${TAG}"
   read -p "⚠️  Deploying to PRODUCTION. Are you sure? (yes/no): " CONFIRM
   [[ "$CONFIRM" == "yes" ]] || { echo "Aborted."; exit 1; }

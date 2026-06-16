@@ -519,7 +519,7 @@ def _map_ibm_extension(act: dict) -> list[dict]:
                     "method": "POST",
                     "accept": "application/json",
                     "contentType": "application/json",
-                    "body": f"${{{attrs.get('inputVariable', 'ruleInput')}}}",
+                    "body": "${workflow.input." + attrs.get('inputVariable', 'ruleInput') + "}",
                 },
                 "_outputVariable": attrs.get("outputVariable"),
             },
