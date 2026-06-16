@@ -179,7 +179,7 @@ Consenting customers opt in to BPEL corpus contribution (pattern library moat).
 | SA-3 | `POST /api/v1/validate` — convert + validate against a customer's Orkes instance | 🔲 Planned | Customer passes `orkesBaseUrl` + API key in header |
 | SA-4 | `GET /api/v1/health`, `GET /api/v1/version` | 🔲 Planned | |
 | SA-5 | Freemium quota: 5 free conversions per IP / session, then API key required | 🔲 Planned | Low friction for first-time users |
-| SA-6 | API key management (sign-up, rotate, revoke) | 🔲 Planned | Simple self-service; no OAuth complexity |
+| SA-6 | API key management (sign-up, rotate, revoke) | 🔲 Planned | Simple self-service; no OAuth complexity. Key rotation detail → AU-16 |
 | SA-7 | Usage dashboard — conversions used, warnings count, plan tier | 🔲 Planned | |
 | SA-8 | Pricing tiers: Free → Starter (50/mo) → Pro (unlimited) → Enterprise (SLA) | 🔲 Planned | |
 | SA-9 | Stripe payment integration | 🔲 Planned | |
@@ -231,6 +231,7 @@ claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes
 | AU-13 | MCP `X-Api-Key` header threading — quota applied same as REST API | 🔲 V1.1 | Same middleware |
 | AU-14 | Stripe webhook endpoint (`POST /webhooks/stripe`) | 🔲 V1.1 | Verify signature, update DynamoDB on `checkout.session.completed` |
 | AU-15 | `/api/v1/me` endpoint — returns current user tier, usage, API key (masked) | 🔲 V1.1 | Used by dashboard and MCP tool |
+| AU-16 | **API key rotation** — "Rotate Key" button in dashboard issues a new `bpel2_*` key and immediately invalidates the old one; one-click update shown for MCP config snippet | 🔲 Planned | Needed for: accidental key exposure, key sharing revocation, periodic security hygiene. New key inherits same tier/credits. Old key rejected with 401 + clear "key was rotated" message so users know to update their config rather than thinking auth is broken. |
 
 ### SaaS — Web UI (Kickstarter / Try It Now)
 
