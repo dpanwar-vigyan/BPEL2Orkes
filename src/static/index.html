@@ -349,11 +349,11 @@ let _currentUser = null;
         </a>`;
     } else {
       document.getElementById('auth-area').innerHTML =
-        '<a href="/auth/google" class="signin-btn">Sign in — free</a>';
+        '<button class="signin-btn" onclick="showAuthModal()">Sign in — free</button>';
     }
   } catch(e) {
     document.getElementById('auth-area').innerHTML =
-      '<a href="/auth/google" class="signin-btn">Sign in — free</a>';
+      '<button class="signin-btn" onclick="showAuthModal()">Sign in — free</button>';
   }
 })();
 
@@ -473,6 +473,10 @@ function renderWarnings(warnings) {
     </div>`;
 }
 
+function showAuthModal() {
+  document.getElementById('auth-modal').style.display = 'flex';
+}
+
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -562,7 +566,7 @@ convertBtn.addEventListener('click', async () => {
     // Quick probe — if /api/v1/me returned 401 we know auth is enforced
     const probe = await fetch('/api/v1/me');
     if (!probe.ok) {
-      document.getElementById('auth-modal').style.display = 'flex';
+      showAuthModal();
       return;
     }
   }
