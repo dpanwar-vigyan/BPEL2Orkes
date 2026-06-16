@@ -36,12 +36,12 @@ TABLE_NAME = f"bpel2orkes-users-{ENV}"
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 TIERS = {
-    "free":      {"credits": 3,   "price": 0},
+    "free":      {"credits": 50,  "price": 0},
     "developer": {"credits": 30,  "price": 10},
     "starter":   {"credits": None, "price": 49},  # None = unlimited
 }
 
-FREE_CREDITS = 3
+FREE_CREDITS = 50
 
 
 # ── DynamoDB client ────────────────────────────────────────────────────────────
