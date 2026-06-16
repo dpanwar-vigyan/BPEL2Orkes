@@ -25,4 +25,4 @@ EXPOSE 8000
 ENV PYTHONPATH=/app/src
 ENV BPEL2ORKES_ENV=production
 
-CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
