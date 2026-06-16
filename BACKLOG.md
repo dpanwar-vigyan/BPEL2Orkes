@@ -311,11 +311,14 @@ environment model.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| INF-1 | `staging.bpel2orkes.kshetra.studio` DNS CNAME configured | 🔲 Planned | Points to hosting provider; isolated from live kshetra.studio |
-| INF-2 | `bpel2orkes.kshetra.studio` DNS CNAME configured (production) | 🔲 Planned | Only after staging is verified |
+| INF-1 | `staging.bpel2orkes.kshetra.studio` DNS CNAME configured | 🟢 Done | Now points to API Gateway custom domain (was ALB) |
+| INF-2 | `bpel2orkes.kshetra.studio` DNS CNAME configured (production) | 🟢 Done | Now points to API Gateway custom domain (was ALB) |
 | INF-3 | robots.txt + X-Robots-Tag on all staging URLs (no public indexing) | 🔲 Planned | |
-| INF-4 | Environment variable config per environment (local / staging / prod) | 🔲 Planned | See architecture.md env var table |
+| INF-4 | Environment variable config per environment (local / staging / prod) | 🟢 Done | `.env` / `.env.staging` / `.env.production` + `scripts/push-secrets.sh` |
 | INF-5 | Separate Orkes Conductor instances for staging vs production | 🔲 Planned | Staging workflows must never touch prod |
+| INF-6 | **Serverless migration: ECS Fargate + ALB → Lambda + API Gateway (REST v1) + WAFv2** | 🟢 Done | Idle cost dropped from ~$50-70/mo (always-on Fargate + ALB) to near-$0 (request-billed). `infra/app.py` `Bpel2OrkesServerless` stack. WAFv2 rate-based rule (300 req/5min/IP) is the cost circuit breaker on abuse/DDoS — confirmed empirically that WAF only supports REST API v1, not HTTP API v2, association. Mangum adapts FastAPI to Lambda; `stateless_http=True` on the MCP mount required since Lambda has no session affinity across invocations. Old ECS/Fargate/ALB stacks destroyed; existing ACM certs + DNS CNAMEs reused so OAuth redirect URIs never changed. |
+| INF-7 | AWS WAF managed rule `CrossSiteScripting_BODY` overridden to Count (not Block) on `/api/v1/convert*` | 🟢 Done | False-positives on legitimate BPEL/XML request bodies — caught during staging validation, would have silently broken the core conversion feature for all users behind the WAF |
+| INF-8 | AWS Budget alert ($20/mo, email) | 🟢 Done | Already existed account-wide — 85%/100% actual + 100% forecasted thresholds to dinesh.s.panwar@gmail.com |
 
 ### CI/CD Pipeline
 

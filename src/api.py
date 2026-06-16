@@ -22,6 +22,9 @@ import httpx
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
@@ -39,7 +42,7 @@ from auth import require_api_key, increment_usage, optional_api_key
 from oauth import router as oauth_router, get_session
 
 # ── MCP ASGI app (must be created before FastAPI so lifespan can be wired) ─────
-_mcp_asgi = mcp.http_app(transport="streamable-http", path="/")
+_mcp_asgi = mcp.http_app(transport="streamable-http", path="/", stateless_http=True)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -461,6 +464,12 @@ async def stripe_webhook(request: Request):
             upgrade_user(user_id, tier)
 
     return {"received": True}
+
+
+# ── Lambda entrypoint (API Gateway HTTP API proxy integration) ─────────────────
+
+from mangum import Mangum
+handler = Mangum(app)
 
 
 # ── Local dev entrypoint ───────────────────────────────────────────────────────

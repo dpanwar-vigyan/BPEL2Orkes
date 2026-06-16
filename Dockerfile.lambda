@@ -1,0 +1,31 @@
+FROM python:3.12-slim
+
+WORKDIR /var/task
+
+# Install lxml system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxml2 \
+    libxslt1.1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies + the Lambda Runtime Interface Client
+# (awslambdaric bridges the Lambda Runtime API to a normal Python callable —
+# needed because this is a custom base image, not an AWS-provided Lambda image)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt awslambdaric
+
+# Copy source — same relative layout as the ECS Dockerfile (src/, samples/)
+# so Path(__file__).parent-based static/sample dirs in api.py resolve unchanged
+COPY src/ ./src/
+COPY samples/ ./samples/
+
+# Mirrors the ECS image's PYTHONPATH trick: src/*.py import each other as
+# flat top-level modules (e.g. `from auth import ...`), not as a `src` package
+ENV PYTHONPATH=/var/task/src
+ENV BPEL2ORKES_ENV=production
+
+# Note: deliberately no non-root USER here — Lambda's own sandboxing handles
+# that, and a custom UID can break awslambdaric's access to /var/runtime.
+
+ENTRYPOINT ["/usr/local/bin/python", "-m", "awslambdaric"]
+CMD ["api.handler"]
