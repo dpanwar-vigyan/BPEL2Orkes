@@ -18,6 +18,8 @@
   header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px; }
   header h1 { font-size: 18px; font-weight: 700; }
   header h1 span { color: var(--accent); }
+  .back-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
+  .back-btn:hover { background: #1f2330; border-color: var(--accent); }
   .header-links { margin-left: auto; display: flex; gap: 16px; align-items: center; }
   .header-links a { color: var(--muted); text-decoration: none; font-size: 13px; }
   .header-links a:hover { color: var(--text); }
@@ -64,9 +66,9 @@
 </head>
 <body>
 <header>
+  <a href="/" class="back-btn">← Back to Converter</a>
   <h1>BPEL<span>2</span>Orkes</h1>
   <div class="header-links">
-    <a href="/">← Converter</a>
     <a href="/auth/logout">Sign out</a>
   </div>
 </header>
@@ -96,7 +98,10 @@
   const tierClass = `tier-${user.tier}`;
 
   app.innerHTML = `
-    <h2>Welcome back, ${esc(user.name.split(' ')[0])}</h2>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+      <h2 style="margin-bottom:0">Welcome back, ${esc(user.name.split(' ')[0])}</h2>
+      <a href="/" class="btn btn-primary">Start converting →</a>
+    </div>
     <div class="subtitle">${esc(user.email)}</div>
 
     <!-- Usage card -->
@@ -144,28 +149,26 @@
       </div>
     </div>
 
-    ${user.tier === 'free' || user.tier === 'developer' ? `
-    <!-- Upgrade card -->
+    ${user.tier === 'free' ? `
+    <!-- Upgrade card (free tier only — single clear CTA) -->
     <div class="card upgrade-card">
-      <h3>Upgrade Your Plan</h3>
-      <div class="upgrade-grid">
-        <div class="plan ${user.tier === 'free' ? 'current' : ''}">
-          <div class="plan-name">Free ${user.tier === 'free' ? '← you' : ''}</div>
-          <div class="plan-price">$0</div>
-          <div class="plan-desc">3 lifetime conversions<br>API + MCP access<br>No card required</div>
-        </div>
-        <div class="plan ${user.tier === 'developer' ? 'current' : ''}">
-          <div class="plan-name">Developer ${user.tier === 'developer' ? '← you' : ''}</div>
-          <div class="plan-price">$10 <span style="font-size:12px;font-weight:400;color:var(--muted)">one-off</span></div>
-          <div class="plan-desc">30 conversions<br>API + MCP access<br>Priority support</div>
-        </div>
-      </div>
-      ${user.tier === 'free' ? `
-      <button class="btn btn-upgrade" onclick="checkout('developer')" style="margin-right:8px">
+      <h3>Need more conversions?</h3>
+      <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+        Get <strong>30 conversions for $10</strong> — one-time payment, no subscription.
+      </p>
+      <button class="btn btn-upgrade" onclick="checkout('developer')" id="upgrade-btn">
         Upgrade to Developer — $10
-      </button>` : ''}
-      <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" class="btn btn-secondary">
-        Starter ($49/mo) — contact us
+      </button>
+      <div style="margin-top:12px">
+        <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" style="font-size:12px;color:var(--muted)">
+          Need unlimited conversions? Ask about the Starter plan ($49/mo) →
+        </a>
+      </div>
+    </div>` : user.tier === 'developer' ? `
+    <div class="card">
+      <h3>Need more?</h3>
+      <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" style="font-size:13px;color:var(--accent)">
+        Ask about the Starter plan ($49/mo, unlimited conversions) →
       </a>
     </div>` : ''}
   `;
@@ -191,6 +194,8 @@
   };
 
   window.checkout = async (tier) => {
+    const btn = document.getElementById('upgrade-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     const r = await fetch('/api/v1/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -198,8 +203,13 @@
       credentials: 'include',
     });
     const d = await r.json();
-    if (d.url) window.location.href = d.url;
-    else alert('Checkout error: ' + (d.error || 'unknown'));
+    if (d.url) { window.location.href = d.url; return; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Upgrade to Developer — $10'; }
+    if (r.status === 503) {
+      alert("Payments aren't enabled yet — email dinesh@kshetra.studio to upgrade manually for now.");
+    } else {
+      alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
+    }
   };
 })();
 

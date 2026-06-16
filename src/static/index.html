@@ -315,6 +315,18 @@
   </div>
 </div>
 
+<!-- Quota-exceeded modal (hidden by default) -->
+<div class="modal-overlay" id="quota-modal" style="display:none">
+  <div class="modal">
+    <h2>Out of free conversions</h2>
+    <p id="quota-modal-message">You've used all your free conversions.<br>Upgrade to keep converting BPEL files.</p>
+    <a class="oauth-btn" href="/dashboard" style="background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;font-weight:600">
+      Upgrade — view plans
+    </a>
+    <button class="modal-close" onclick="document.getElementById('quota-modal').style.display='none'">Maybe later</button>
+  </div>
+</div>
+
 <script type="module">
 import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
 mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
@@ -585,7 +597,22 @@ convertBtn.addEventListener('click', async () => {
 
     const data = await resp.json();
     if (!resp.ok) {
-      setOutputStatus('err', `Error ${resp.status}: ${data.detail || 'conversion failed'}`);
+      if (resp.status === 429 && data.detail && typeof data.detail === 'object') {
+        const d = data.detail;
+        document.getElementById('quota-modal-message').innerHTML =
+          `${escHtml(d.message || "You've used all your free conversions.")}<br>` +
+          `<strong>${d.creditsUsed}/${d.creditsTotal}</strong> conversions used.`;
+        document.getElementById('quota-modal').style.display = 'flex';
+        setOutputStatus('err', 'Out of free conversions — upgrade to continue');
+        return;
+      }
+      if (resp.status === 401) {
+        showAuthModal();
+        setOutputStatus('err', 'Sign in required');
+        return;
+      }
+      const msg = typeof data.detail === 'object' ? (data.detail.message || JSON.stringify(data.detail)) : (data.detail || 'conversion failed');
+      setOutputStatus('err', `Error ${resp.status}: ${msg}`);
       return;
     }
 
