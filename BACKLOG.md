@@ -1,7 +1,7 @@
 # BPEL2Orkes — Product Backlog
 
 **Studio:** Kshetra Studio · [ktools.kshetra.studio](https://ktools.kshetra.studio)  
-**Updated:** 2026-06-15
+**Updated:** 2026-06-16
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
@@ -197,6 +197,40 @@ Consenting customers opt in to BPEL corpus contribution (pattern library moat).
 | SM-7 | MCP API key auth — same key as REST API | 🔲 Planned | One credential for both surfaces |
 | SM-8 | Publish to MCP Registry (Anthropic + community) | 🔲 Planned | Discovery by Claude users doing migration work |
 | SM-9 | Rate limiting per API key on MCP tools | 🔲 Planned | Prevent abuse on public endpoint |
+
+### SaaS — Auth, Billing & Quotas (V1.1 — build on staging first)
+
+**Identity model:** All surfaces (Web UI, REST API, MCP) share one identity — a Google/GitHub OAuth account.
+API keys are issued from the dashboard after sign-in; no separate sign-up flow.
+
+**Key issuance flow (API & MCP users):**
+1. Visit `bpel2orkes.kshetra.studio` → "Sign in with Google/GitHub"
+2. Free API key auto-issued (`bpel2_free_xxxx`) with 3 lifetime conversions
+3. Copy key from dashboard → use as `X-Api-Key` header or MCP config header
+4. "Upgrade" button → Stripe Checkout → key upgraded to paid tier
+
+**MCP with API key:**
+```bash
+claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes https://bpel2orkes.kshetra.studio/mcp/
+```
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| AU-1 | Google OAuth sign-in (`/auth/google`, `/auth/google/callback`) | 🔲 V1.1 | Authlib + FastAPI |
+| AU-2 | GitHub OAuth sign-in (`/auth/github`, `/auth/github/callback`) | 🔲 V1.1 | Same flow |
+| AU-3 | User record in DynamoDB (`userId`, `email`, `provider`, `apiKey`, `tier`, `usageCount`) | 🔲 V1.1 | No RDS needed — single-table design |
+| AU-4 | Auto-issue free API key on first sign-in (`bpel2_free_` + random 16 chars) | 🔲 V1.1 | Stored hashed in DynamoDB |
+| AU-5 | `X-Api-Key` middleware — validate key, load user, check quota before convert endpoints | 🔲 V1.1 | 401 if missing/invalid, 429 if over quota |
+| AU-6 | Free tier: 3 lifetime conversions, no card required | 🔲 V1.1 | Counter increments on every `/convert` call |
+| AU-7 | Developer tier ($10 one-off): 30 credits, issued via Stripe Checkout | 🔲 V1.1 | Stripe webhook → update tier + credits in DynamoDB |
+| AU-8 | Starter tier ($49/mo): unlimited, contact form for now | 🔲 V1.1 | Manual fulfilment until volume justifies automation |
+| AU-9 | Dashboard page (`/dashboard`) — shows tier, credits used, API key, copy button | 🔲 V1.1 | Simple HTML page, no React needed |
+| AU-10 | "Upgrade" button in dashboard → Stripe Checkout → webhook → tier upgrade | 🔲 V1.1 | |
+| AU-11 | Web UI conversion gate — show "Sign in" prompt when no session, show usage count when signed in | 🔲 V1.1 | |
+| AU-12 | Session cookie (httponly, secure, 7-day expiry) | 🔲 V1.1 | JWT signed with server secret |
+| AU-13 | MCP `X-Api-Key` header threading — quota applied same as REST API | 🔲 V1.1 | Same middleware |
+| AU-14 | Stripe webhook endpoint (`POST /webhooks/stripe`) | 🔲 V1.1 | Verify signature, update DynamoDB on `checkout.session.completed` |
+| AU-15 | `/api/v1/me` endpoint — returns current user tier, usage, API key (masked) | 🔲 V1.1 | Used by dashboard and MCP tool |
 
 ### SaaS — Web UI (Kickstarter / Try It Now)
 
