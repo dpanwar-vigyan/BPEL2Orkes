@@ -214,6 +214,10 @@
         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download
       </button>
+      <button class="btn btn-secondary" id="report-btn" disabled title="Export a PDF-ready migration report">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Export Report
+      </button>
       <span style="flex:1"></span>
       <span id="wf-count" style="font-size:12px;color:var(--muted)"></span>
     </div>
@@ -310,6 +314,7 @@ const dropZone      = document.getElementById('drop-zone');
 const editorWrapper = document.getElementById('editor-wrapper');
 const copyBtn       = document.getElementById('copy-btn');
 const downloadBtn   = document.getElementById('download-btn');
+const reportBtn     = document.getElementById('report-btn');
 const validateBtn   = document.getElementById('validate-btn');
 const orkesBaseUrl   = document.getElementById('orkes-base-url');
 const orkesKeyId     = document.getElementById('orkes-key-id');
@@ -357,6 +362,7 @@ function showOutput(json) {
   outputPre.style.display = 'block';
   copyBtn.disabled = false;
   downloadBtn.disabled = false;
+  reportBtn.disabled = false;
   validateBtn.disabled = false;
 }
 
@@ -367,6 +373,7 @@ async function showDiagram() {
   diagramPanel.style.display = 'flex';
   copyBtn.disabled = false;
   downloadBtn.disabled = false;
+  reportBtn.disabled = false;
   validateBtn.disabled = false;
   const el = document.getElementById('mermaid-diagram');
   el.innerHTML = '<div style="color:var(--muted);padding:20px">Rendering diagram…</div>';
@@ -476,6 +483,7 @@ clearBtn.addEventListener('click', () => {
   warningsContainer.innerHTML = '';
   copyBtn.disabled = true;
   downloadBtn.disabled = true;
+  reportBtn.disabled = true;
   validateBtn.disabled = true;
   orkesResult.textContent = '';
   wfCount.textContent = '';
@@ -569,6 +577,313 @@ downloadBtn.addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
+
+// ── Export Report ─────────────────────────────────────────────────────────────
+
+reportBtn.addEventListener('click', exportReport);
+
+async function exportReport() {
+  if (!_bundle) return;
+  reportBtn.disabled = true;
+  reportBtn.innerHTML = '<span class="spinner"></span> Building…';
+  try {
+    await _buildAndOpenReport();
+  } finally {
+    reportBtn.disabled = false;
+    reportBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Export Report';
+  }
+}
+
+async function _buildAndOpenReport() {
+  const wf   = _bundle.bundle?.mainWorkflow || {};
+  const wfName = wf.name || 'workflow';
+  const warnings = _bundle.bundle?.warnings || [];
+  const subs = (_bundle.bundle?.subWorkflows || []).concat(
+    _bundle.bundle?.compensationFlows || [],
+    _bundle.bundle?.faultHandlerFlows || []
+  );
+
+  const total   = document.getElementById('sum-total').textContent;
+  const auto    = document.getElementById('sum-auto').textContent;
+  const work    = document.getElementById('sum-work').textContent;
+  const subCount= document.getElementById('sum-sub').textContent;
+  const warnCount=document.getElementById('sum-warn').textContent;
+  const date    = new Date().toLocaleDateString('en-AU', { year:'numeric', month:'long', day:'numeric' });
+
+  // Re-render diagram with neutral (light) theme for print
+  let diagramSvg = '';
+  if (_mermaidSrc) {
+    try {
+      const m = window._mermaid;
+      const lightSrc = _mermaidSrc.replace(/%%\{init[^\n]*\}\s*%%\s*\n?/, '%%{init: {"theme": "neutral"}}%%\n');
+      const { svg } = await m.render('report-' + Date.now(), lightSrc);
+      diagramSvg = svg;
+    } catch(e) {
+      diagramSvg = document.getElementById('mermaid-diagram').innerHTML || '';
+    }
+  }
+
+  // Categorise warnings
+  const catWorkers    = warnings.filter(w => /SIMPLE task|worker stub|conductor worker|java sdk|python sdk/i.test(w));
+  const catCallbacks  = warnings.filter(w => /WAIT|callback|inbound message|push.pull|onMessage/i.test(w) && !catWorkers.includes(w));
+  const catCorrel     = warnings.filter(w => /correlation set/i.test(w));
+  const catSoap       = warnings.filter(w => /SOAP|WS-|wsdl/i.test(w) && !catWorkers.includes(w));
+  const catOther      = warnings.filter(w =>
+    !catWorkers.includes(w) && !catCallbacks.includes(w) &&
+    !catCorrel.includes(w)  && !catSoap.includes(w));
+
+  function warnSection(title, icon, color, items) {
+    if (!items.length) return '';
+    const rows = items.map((w, i) => {
+      const ref = w.startsWith('[') ? w.slice(1, w.indexOf(']')) : `Item ${i+1}`;
+      const msg = w.startsWith('[') ? w.slice(w.indexOf(']')+2) : w;
+      return `<div class="backlog-item">
+        <div class="backlog-num" style="background:${color}">${i+1}</div>
+        <div>
+          <div class="backlog-ref">${escHtml(ref)}</div>
+          <div class="backlog-msg">${escHtml(msg)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="backlog-section">
+      <h3 class="backlog-title" style="border-left:4px solid ${color}">${icon} ${escHtml(title)} <span class="backlog-count">${items.length}</span></h3>
+      ${rows}
+    </div>`;
+  }
+
+  // Sub-workflows table
+  const subsHtml = subs.length ? `
+    <div class="backlog-section">
+      <h3 class="backlog-title" style="border-left:4px solid #6366f1">📦 Sub-Workflows Generated <span class="backlog-count">${subs.length}</span></h3>
+      <table class="sub-table">
+        <thead><tr><th>#</th><th>Name</th><th>Tasks</th></tr></thead>
+        <tbody>${subs.map((s,i) => `<tr><td>${i+1}</td><td>${escHtml(s.name||'')}</td><td>${(s.tasks||[]).length}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>` : '';
+
+  const autoPercent = total > 0 ? Math.round((parseInt(auto)||0)/(parseInt(total)||1)*100) : 0;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Migration Report — ${escHtml(wfName)}</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; color: #1e293b; background: #fff; }
+
+  /* ── Slide base ── */
+  .slide { width: 100%; min-height: 257mm; page-break-after: always; display: flex; flex-direction: column; padding: 10mm 12mm; position: relative; }
+  .slide:last-child { page-break-after: avoid; }
+
+  /* ── Slide 1: Cover ── */
+  .slide-cover { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%); color: #fff; justify-content: space-between; }
+  .cover-top { display: flex; align-items: center; gap: 12px; }
+  .cover-logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .cover-logo span { color: #a5b4fc; }
+  .cover-version { background: rgba(255,255,255,0.15); border-radius: 4px; padding: 2px 8px; font-size: 10px; color: #c7d2fe; }
+  .cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 16mm 0 8mm; }
+  .cover-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #a5b4fc; margin-bottom: 8px; }
+  .cover-wfname { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.15; color: #fff; margin-bottom: 6px; word-break: break-all; }
+  .cover-subtitle { font-size: 14px; color: #c7d2fe; }
+  .cover-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 10mm 0; }
+  .stat-card { background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 8px; text-align: center; }
+  .stat-num { font-size: 26px; font-weight: 800; line-height: 1; }
+  .stat-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: #c7d2fe; margin-top: 3px; }
+  .num-green { color: #4ade80; }
+  .num-amber { color: #fbbf24; }
+  .num-blue  { color: #a5b4fc; }
+  .cover-footer { display: flex; justify-content: space-between; align-items: flex-end; font-size: 10px; color: #a5b4fc; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 4mm; }
+
+  /* ── Slide header (shared) ── */
+  .slide-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 4mm; border-bottom: 2px solid #e2e8f0; margin-bottom: 6mm; }
+  .slide-title { font-size: 18px; font-weight: 700; color: #1e293b; }
+  .slide-meta { font-size: 10px; color: #94a3b8; }
+  .slide-wfbadge { background: #f1f5f9; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 600; color: #475569; }
+
+  /* ── Slide 2: Diagram ── */
+  .slide-diagram { background: #f8fafc; }
+  .diagram-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 4mm; overflow: hidden; }
+  .diagram-container svg { max-width: 100%; max-height: 210mm; height: auto; }
+  .legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4mm; padding-top: 3mm; border-top: 1px solid #e2e8f0; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 9px; color: #64748b; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Slide 3: Assessment ── */
+  .assess-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-bottom: 6mm; }
+  .assess-card { border-radius: 8px; padding: 5mm; }
+  .assess-card.green { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .assess-card.amber { background: #fffbeb; border: 1px solid #fde68a; }
+  .assess-card h3 { font-size: 11px; font-weight: 700; margin-bottom: 3mm; }
+  .assess-card.green h3 { color: #15803d; }
+  .assess-card.amber h3 { color: #b45309; }
+  .assess-card ul { padding-left: 14px; }
+  .assess-card li { font-size: 11px; line-height: 1.7; color: #374151; }
+  .progress-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 3mm 0 1mm; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #22c55e, #86efac); border-radius: 4px; }
+  .progress-label { font-size: 10px; color: #64748b; }
+  .wf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .wf-table th { background: #f1f5f9; padding: 5px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; }
+  .wf-table td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+  .wf-table tr:last-child td { border-bottom: none; }
+  .badge-ok  { background: #dcfce7; color: #166534; border-radius: 3px; padding: 1px 6px; font-size: 9px; font-weight: 600; }
+  .badge-warn{ background: #fef9c3; color: #854d0e; border-radius: 3px; padding: 1px 6px; font-size: 9px; font-weight: 600; }
+
+  /* ── Slide 4+: Backlog ── */
+  .backlog-section { margin-bottom: 5mm; }
+  .backlog-title { font-size: 12px; font-weight: 700; color: #1e293b; padding: 2mm 0 2mm 3mm; margin-bottom: 2mm; display: flex; align-items: center; gap: 6px; }
+  .backlog-count { background: #f1f5f9; color: #64748b; border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 600; }
+  .backlog-item { display: flex; gap: 8px; margin-bottom: 6px; align-items: flex-start; }
+  .backlog-num { width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .backlog-ref { font-size: 10px; font-weight: 700; color: #475569; margin-bottom: 1px; font-family: monospace; }
+  .backlog-msg { font-size: 10.5px; color: #374151; line-height: 1.5; }
+  .sub-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .sub-table th { background: #f1f5f9; padding: 4px 8px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; }
+  .sub-table td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; }
+
+  /* ── Footer (all slides except cover) ── */
+  .slide-footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ SLIDE 1: Cover ══ -->
+<div class="slide slide-cover">
+  <div class="cover-top">
+    <div class="cover-logo">BPEL<span>2</span>Orkes</div>
+    <div class="cover-version">Migration Report</div>
+  </div>
+  <div class="cover-main">
+    <div class="cover-label">BPEL → Orkes Conductor</div>
+    <div class="cover-wfname">${escHtml(wfName)}</div>
+    <div class="cover-subtitle">Automated Migration Assessment &amp; Developer Backlog</div>
+  </div>
+  <div class="cover-stats">
+    <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-lbl">Total Tasks</div></div>
+    <div class="stat-card"><div class="stat-num num-green">${auto}</div><div class="stat-lbl">Auto-converted</div></div>
+    <div class="stat-card"><div class="stat-num num-amber">${work}</div><div class="stat-lbl">Needs Work</div></div>
+    <div class="stat-card"><div class="stat-num num-blue">${subCount}</div><div class="stat-lbl">Sub-Workflows</div></div>
+    <div class="stat-card"><div class="stat-num num-amber">${warnCount}</div><div class="stat-lbl">Warnings</div></div>
+  </div>
+  <div class="cover-footer">
+    <span>Generated ${escHtml(date)}</span>
+    <span>Kshetra Studio · bpel2orkes.kshetra.studio</span>
+  </div>
+</div>
+
+<!-- ══ SLIDE 2: Flow Diagram ══ -->
+<div class="slide slide-diagram">
+  <div class="slide-header">
+    <div class="slide-title">Conductor Workflow — Visual Overview</div>
+    <div class="slide-wfbadge">${escHtml(wfName)}</div>
+  </div>
+  <div class="diagram-container">
+    ${diagramSvg || '<div style="color:#94a3b8;text-align:center;padding:20mm">Diagram not available</div>'}
+  </div>
+  <div class="legend-row">
+    <div class="legend-item"><div class="legend-dot" style="background:#166534"></div> HTTP / SET_VARIABLE / INLINE — auto-converted</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#78350f"></div> WAIT / SIMPLE — needs developer work</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7f1d1d"></div> TERMINATE</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4c1d95"></div> HUMAN</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#1e3a5f"></div> Structural (FORK/SWITCH/LOOP/SUB)</div>
+  </div>
+  <div class="slide-footer"><span>BPEL2Orkes · Kshetra Studio</span><span>${escHtml(date)}</span></div>
+</div>
+
+<!-- ══ SLIDE 3: Migration Assessment ══ -->
+<div class="slide">
+  <div class="slide-header">
+    <div class="slide-title">Migration Assessment</div>
+    <div class="slide-wfbadge">${escHtml(wfName)}</div>
+  </div>
+
+  <div class="assess-grid">
+    <div class="assess-card green">
+      <h3>✅ Auto-Converted (${auto} of ${total} tasks)</h3>
+      <div class="progress-bar"><div class="progress-fill" style="width:${autoPercent}%"></div></div>
+      <div class="progress-label">${autoPercent}% automatically migrated</div>
+      <ul style="margin-top:6px">
+        <li>HTTP tasks — outbound REST calls preserved</li>
+        <li>SET_VARIABLE — BPEL assign operations</li>
+        <li>SWITCH / FORK_JOIN — flow control structures</li>
+        <li>DO_WHILE — loop activities</li>
+        <li>SUB_WORKFLOW — scopes extracted as sub-workflows</li>
+        <li>INLINE (JavaScript) — expressions translated</li>
+        <li>TERMINATE — fault/exit conditions</li>
+      </ul>
+    </div>
+    <div class="assess-card amber">
+      <h3>⚠ Needs Developer Work (${work} tasks, ${warnCount} warnings)</h3>
+      <ul style="margin-top:6px">
+        ${catWorkers.length ? `<li><strong>${catWorkers.length} Worker(s)</strong> — implement Conductor worker using Java/Python SDK</li>` : ''}
+        ${catCallbacks.length ? `<li><strong>${catCallbacks.length} Callback(s)</strong> — wire ESB/MQ to POST task completion to Conductor</li>` : ''}
+        ${catSoap.length ? `<li><strong>${catSoap.length} SOAP service(s)</strong> — wrap WS envelope &amp; security in worker</li>` : ''}
+        ${catCorrel.length ? `<li><strong>${catCorrel.length} Correlation set(s)</strong> — use workflowId as correlation key</li>` : ''}
+        ${catOther.length ? `<li><strong>${catOther.length} other item(s)</strong> — see backlog for details</li>` : ''}
+      </ul>
+    </div>
+  </div>
+
+  ${subs.length ? `
+  <h3 style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:3mm">📦 Generated Workflows (${1 + subs.length} total)</h3>
+  <table class="wf-table">
+    <thead><tr><th>#</th><th>Workflow Name</th><th>Type</th><th>Tasks</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>${escHtml(wfName)}</strong></td><td>Main</td><td>${(wf.tasks||[]).length}</td><td><span class="badge-ok">Generated</span></td></tr>
+      ${subs.map((s,i) => `<tr><td>${i+2}</td><td>${escHtml(s.name||'')}</td><td>${s._type||'Sub'}</td><td>${(s.tasks||[]).length}</td><td><span class="badge-ok">Generated</span></td></tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  <div class="slide-footer"><span>BPEL2Orkes · Kshetra Studio</span><span>${escHtml(date)}</span></div>
+</div>
+
+<!-- ══ SLIDE 4: Developer Backlog ══ -->
+<div class="slide">
+  <div class="slide-header">
+    <div class="slide-title">Developer Backlog — Post-Deployment Action Items</div>
+    <div class="slide-wfbadge">${warnCount} items</div>
+  </div>
+
+  ${warnings.length === 0
+    ? '<div style="text-align:center;padding:20mm;color:#22c55e;font-size:18px;font-weight:700">✅ No warnings — workflow is ready to register and run</div>'
+    : `
+  ${warnSection('Worker Implementation Required', '🔧', '#b45309', catWorkers)}
+  ${warnSection('Callback / Push→Pull Integration', '📡', '#1d4ed8', catCallbacks)}
+  ${warnSection('SOAP / WS Service Wrapping', '🔌', '#7c3aed', catSoap)}
+  ${warnSection('Correlation Set Migration', '🔗', '#0f766e', catCorrel)}
+  ${warnSection('Other Migration Notes', '📝', '#64748b', catOther)}
+  ${subsHtml}
+  `}
+
+  <div style="margin-top:auto;background:#f8fafc;border-radius:8px;padding:4mm;border:1px solid #e2e8f0">
+    <div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:2mm">⚡ Next Steps</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#374151">
+      <div>1. Implement each SIMPLE task as a Conductor worker (Java / Python SDK)</div>
+      <div>2. Deploy workers — they poll Conductor via <code>taskType</code> name</div>
+      <div>3. Wire ESB/MQ/API gateway to POST WAIT task completions</div>
+      <div>4. Register this workflow on Orkes via the UI or <code>PUT /api/metadata/workflow</code></div>
+      <div>5. Start a test run: <code>POST /api/workflow/${escHtml(wfName)}</code></div>
+      <div>6. Monitor in Orkes Console — each task shows input/output for debugging</div>
+    </div>
+  </div>
+
+  <div class="slide-footer"><span>BPEL2Orkes · Kshetra Studio</span><span>${escHtml(date)}</span></div>
+</div>
+
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) { alert('Pop-up blocked — please allow pop-ups for this site and try again.'); return; }
+  win.document.write(html);
+  win.document.close();
+  // Give mermaid SVG time to paint before print dialog
+  setTimeout(() => { try { win.print(); } catch(e) {} }, 800);
+}
 
 // ── Validate on Orkes ─────────────────────────────────────────────────────────
 
