@@ -269,6 +269,12 @@ class Bpel2OrkesServerless(Stack):
             rest_api_name=f"bpel2orkes-{env_name}",
             handler=fn,
             proxy=True,
+            # .bpel isn't a recognised MIME extension, so StaticFiles serves it as
+            # application/octet-stream — Mangum correctly base64-encodes that as binary,
+            # but API Gateway only decodes base64 responses for content types listed
+            # here. "*/*" covers all of them (JSON/text responses are unaffected, since
+            # Mangum's isBase64Encoded flag per-response still controls actual decoding).
+            binary_media_types=["*/*"],
             domain_name=apigw.DomainNameOptions(
                 domain_name=domain_name,
                 certificate=acm.Certificate.from_certificate_arn(self, "Cert", cert_arn),
