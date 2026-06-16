@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import time
 import httpx
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
@@ -35,6 +36,14 @@ from code_generator import generate
 from diagram_generator import generate_mermaid, generate_migration_summary
 from mcp_server import mcp
 
+# ── MCP ASGI app (must be created before FastAPI so lifespan can be wired) ─────
+_mcp_asgi = mcp.http_app(transport="streamable-http", path="/")
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    async with _mcp_asgi.lifespan(app):
+        yield
+
 # ── App ────────────────────────────────────────────────────────────────────────
 
 VERSION = "0.2.0"
@@ -46,6 +55,7 @@ app = FastAPI(
     version=VERSION,
     docs_url="/docs" if ENV != "production" else None,
     redoc_url="/redoc" if ENV != "production" else None,
+    lifespan=_lifespan,
 )
 
 app.add_middleware(
@@ -85,7 +95,7 @@ if _SAMPLES_DIR.exists():
 # ── MCP server (SSE transport) ─────────────────────────────────────────────────
 # Customers add this to Claude Desktop claude_desktop_config.json:
 #   { "mcpServers": { "bpel2orkes": { "url": "https://bpel2orkes.kshetra.studio/mcp" } } }
-app.mount("/mcp", mcp.http_app(transport="streamable-http"))
+app.mount("/mcp", _mcp_asgi)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
