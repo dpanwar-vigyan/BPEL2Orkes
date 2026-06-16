@@ -296,14 +296,22 @@ class Bpel2OrkesServerless(Stack):
                         managed_rule_group_statement=wafv2.CfnWebACL.ManagedRuleGroupStatementProperty(
                             vendor_name="AWS",
                             name="AWSManagedRulesCommonRuleSet",
-                            # CrossSiteScripting_BODY false-positives on legitimate BPEL/XML
-                            # request bodies (confirmed via WAF sampled requests during staging
-                            # validation — it blocked a real BPEL sample with HTTP 403). This is
-                            # the app's core input type, so Count instead of Block for this one
-                            # specific sub-rule rather than disabling the whole managed rule group.
+                            # Two confirmed false positives on legitimate BPEL/XML request bodies
+                            # (caught via WAF sampled requests during staging/production testing):
+                            #  - CrossSiteScripting_BODY: XML tags/content resemble XSS patterns
+                            #  - SizeRestrictions_BODY: WAF's default 8KB body inspection limit
+                            #    blocks any BPEL file larger than that (3 of our 4 sample files
+                            #    are >8KB; real customer BPEL is routinely tens of KB). The app
+                            #    already enforces its own size cap (BPEL_MAX_SIZE_MB, 5-10MB) via
+                            #    limit_request_size in api.py, so WAF's stricter default here is
+                            #    redundant, not protective — Count instead of Block.
                             rule_action_overrides=[
                                 wafv2.CfnWebACL.RuleActionOverrideProperty(
                                     name="CrossSiteScripting_BODY",
+                                    action_to_use=wafv2.CfnWebACL.RuleActionProperty(count={}),
+                                ),
+                                wafv2.CfnWebACL.RuleActionOverrideProperty(
+                                    name="SizeRestrictions_BODY",
                                     action_to_use=wafv2.CfnWebACL.RuleActionProperty(count={}),
                                 ),
                             ],
