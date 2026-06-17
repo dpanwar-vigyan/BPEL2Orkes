@@ -219,7 +219,7 @@
     if (d.url) { window.location.href = d.url; return; }
     if (btn) { btn.disabled = false; btn.textContent = `$${(amount_cents/100).toFixed(0)} — ${Math.floor(amount_cents/centsPerConv)} conv`; }
     if (r.status === 503) {
-      alert("Payments aren't enabled yet — email dinesh@kshetra.studio to add credits manually for now.");
+      alert("Payments aren't enabled yet — contact support to add credits manually for now.");
     } else {
       alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
     }
