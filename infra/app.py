@@ -248,6 +248,8 @@ class Bpel2OrkesServerless(Stack):
                 "GITHUB_CLIENT_ID": secret_env("GITHUB_CLIENT_ID"),
                 "GITHUB_CLIENT_SECRET": secret_env("GITHUB_CLIENT_SECRET"),
                 "SESSION_SECRET": secret_env("SESSION_SECRET"),
+                "STRIPE_SECRET_KEY": secret_env("STRIPE_SECRET_KEY"),
+                "STRIPE_WEBHOOK_SECRET": secret_env("STRIPE_WEBHOOK_SECRET"),
             },
         )
 

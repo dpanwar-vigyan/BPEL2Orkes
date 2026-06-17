@@ -7,11 +7,11 @@
 #   ./scripts/push-secrets.sh production   # reads .env.production
 #
 # Expected file format (.env.staging / .env.production):
-#   GOOGLE_CLIENT_ID=...
-#   GOOGLE_CLIENT_SECRET=...
 #   GITHUB_CLIENT_ID=...
 #   GITHUB_CLIENT_SECRET=...
 #   SESSION_SECRET=...
+#   STRIPE_SECRET_KEY=...
+#   STRIPE_WEBHOOK_SECRET=...
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ fi
 
 ENV_FILE=".env.${ENV}"
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "✗ ${ENV_FILE} not found. Create it with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET"
+  echo "✗ ${ENV_FILE} not found. Create it with GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, SESSION_SECRET, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET"
   exit 1
 fi
 
@@ -34,7 +34,7 @@ set -a
 source "$ENV_FILE"
 set +a
 
-for var in GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET SESSION_SECRET; do
+for var in GITHUB_CLIENT_ID GITHUB_CLIENT_SECRET SESSION_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
   if [[ -z "${!var:-}" ]]; then
     echo "✗ ${var} is missing or empty in ${ENV_FILE}"
     exit 1
@@ -44,11 +44,11 @@ done
 SECRET_NAME="bpel2orkes/${ENV}/oauth"
 SECRET_JSON=$(cat <<EOF
 {
-  "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
-  "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
   "GITHUB_CLIENT_ID": "${GITHUB_CLIENT_ID}",
   "GITHUB_CLIENT_SECRET": "${GITHUB_CLIENT_SECRET}",
-  "SESSION_SECRET": "${SESSION_SECRET}"
+  "SESSION_SECRET": "${SESSION_SECRET}",
+  "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}",
+  "STRIPE_WEBHOOK_SECRET": "${STRIPE_WEBHOOK_SECRET}"
 }
 EOF
 )
@@ -70,5 +70,5 @@ else
 fi
 
 echo ""
-echo "Next: redeploy ${ENV} so ECS picks up the new secret values:"
-echo "  ./scripts/deploy.sh ${ENV}"
+echo "Next: redeploy ${ENV} so Lambda picks up the new secret values:"
+echo "  npx aws-cdk --app '.venv/bin/python3 infra/app.py' deploy Bpel2Orkes$(python3 -c "print('${ENV}'.title())")Serverless --require-approval never"

@@ -317,7 +317,7 @@
     <h2>Out of free conversions</h2>
     <p id="quota-modal-message">You've used all your free conversions.<br>Upgrade to keep converting BPEL files.</p>
     <a class="oauth-btn" href="/dashboard" style="background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;font-weight:600">
-      Upgrade — view plans
+      Top up credits
     </a>
     <button class="modal-close" onclick="document.getElementById('quota-modal').style.display='none'">Maybe later</button>
   </div>
@@ -347,8 +347,8 @@ let _currentUser = null;
     const r = await fetch('/api/v1/me');
     if (r.ok) {
       _currentUser = await r.json();
-      const left = _currentUser.creditsTotal === 'unlimited' ? '∞' : (_currentUser.creditsTotal - _currentUser.creditsUsed);
-      const low = typeof left === 'number' && left <= 1;
+      const left = _currentUser.conversionsRemaining === 'unlimited' ? '∞' : _currentUser.conversionsRemaining;
+      const low = typeof left === 'number' && left <= 5;
       document.getElementById('auth-area').innerHTML = `
         <a href="/dashboard" class="user-chip">
           <div class="user-avatar">${escHtml(_currentUser.name[0].toUpperCase())}</div>
@@ -597,7 +597,7 @@ convertBtn.addEventListener('click', async () => {
         const d = data.detail;
         document.getElementById('quota-modal-message').innerHTML =
           `${escHtml(d.message || "You've used all your free conversions.")}<br>` +
-          `<strong>${d.creditsUsed}/${d.creditsTotal}</strong> conversions used.`;
+          `<strong>${d.conversionsRemaining ?? 0}</strong> conversions remaining.`;
         document.getElementById('quota-modal').style.display = 'flex';
         setOutputStatus('err', 'Out of free conversions — upgrade to continue');
         return;

@@ -89,43 +89,66 @@
   }
   const user = await resp.json();
 
-  const creditsTotal = user.creditsTotal === 'unlimited' ? '∞' : user.creditsTotal;
-  const creditsLeft = user.creditsTotal === 'unlimited' ? '∞' : (user.creditsTotal - user.creditsUsed);
-  const pct = user.creditsTotal === 'unlimited' ? 20 : Math.round((user.creditsUsed / user.creditsTotal) * 100);
-  const barColor = pct >= 90 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#22c55e';
-
-  const tierLabel = {'free':'Free','developer':'Developer','starter':'Starter'}[user.tier] || user.tier;
-  const tierClass = `tier-${user.tier}`;
+  const remaining = user.conversionsRemaining === 'unlimited' ? '∞' : user.conversionsRemaining;
+  const balanceDollars = (user.creditBalanceCents / 100).toFixed(2);
+  const centsPerConv = user.centsPerConversion || 10;
+  const rateLabel = `$${(centsPerConv/100).toFixed(2)}/conversion · $1 = ${Math.floor(100/centsPerConv)} conversions`;
+  const low = typeof user.conversionsRemaining === 'number' && user.conversionsRemaining <= 5;
+  const tierLabel = {'free':'Free','paid':'Paid','starter':'Starter (Unlimited)'}[user.tier] || user.tier;
+  const tierClass = user.tier === 'starter' ? 'tier-starter' : user.tier === 'paid' ? 'tier-developer' : 'tier-free';
+  const topped = new URLSearchParams(location.search).get('topped_up');
 
   app.innerHTML = `
+    ${topped ? '<div style="background:#14532d;border:1px solid #22c55e;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#86efac">✓ Credits added — ready to convert!</div>' : ''}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-      <h2 style="margin-bottom:0">Welcome back, ${esc(user.name.split(' ')[0])}</h2>
+      <h2 style="margin-bottom:0">Welcome back, ${escHtml(user.name.split(' ')[0])}</h2>
       <a href="/" class="btn btn-primary">Start converting →</a>
     </div>
-    <div class="subtitle">${esc(user.email)}</div>
+    <div class="subtitle">${escHtml(user.email)}</div>
 
-    <!-- Usage card -->
+    <!-- Credit balance card -->
     <div class="card">
-      <h3>Usage &amp; Plan</h3>
+      <h3>Credits &amp; Usage</h3>
       <div class="stat-row" style="margin-bottom:16px">
         <div class="stat">
-          <span class="num num-green">${creditsLeft}</span>
+          <span class="num ${low ? 'num-amber' : 'num-green'}">${remaining}</span>
           <span class="lbl">Conversions left</span>
         </div>
         <div class="stat">
-          <span class="num">${user.creditsUsed}</span>
-          <span class="lbl">Used</span>
+          <span class="num">$${balanceDollars}</span>
+          <span class="lbl">Credit balance</span>
         </div>
         <div class="stat" style="margin-left:auto;align-items:flex-end">
           <span class="tier-badge ${tierClass}">${tierLabel}</span>
         </div>
       </div>
-      ${user.creditsTotal !== 'unlimited' ? `
-      <div class="progress-wrap">
-        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${barColor}"></div></div>
-        <div class="progress-label">${user.creditsUsed} of ${creditsTotal} conversions used</div>
-      </div>` : '<div style="font-size:12px;color:var(--success)">✓ Unlimited conversions</div>'}
+      <div style="font-size:11px;color:var(--muted)">${user.tier === 'starter' ? '✓ Unlimited conversions' : rateLabel}</div>
     </div>
+
+    <!-- Top-up card -->
+    ${user.tier !== 'starter' ? `
+    <div class="card upgrade-card">
+      <h3>Top up credits</h3>
+      <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+        Add any amount — credits never expire. ${rateLabel}.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn btn-secondary" onclick="topup(500)">$5 <span style="font-size:11px;color:var(--muted)">50 conv</span></button>
+        <button class="btn btn-secondary" onclick="topup(1000)">$10 <span style="font-size:11px;color:var(--muted)">100 conv</span></button>
+        <button class="btn btn-secondary" onclick="topup(2500)">$25 <span style="font-size:11px;color:var(--muted)">250 conv</span></button>
+        <button class="btn btn-upgrade" onclick="topup(10000)" id="topup-btn">$100 <span style="font-size:11px;opacity:0.8">1000 conv</span></button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="custom-amount" type="number" min="5" max="1000" placeholder="Custom $amount"
+          style="width:140px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px">
+        <button class="btn btn-secondary" onclick="topupCustom()">Add credits</button>
+      </div>
+      <div style="margin-top:12px">
+        <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Unlimited Plan" style="font-size:12px;color:var(--muted)">
+          Need unlimited conversions? Contact us about the Starter plan →
+        </a>
+      </div>
+    </div>` : ''}
 
     <!-- API Key card -->
     <div class="card">
@@ -134,7 +157,7 @@
         Use this key to access the REST API and MCP server. Keep it secret.
       </div>
       <div class="api-key-row">
-        <div class="api-key-display" id="key-display">${esc(user.apiKey)}</div>
+        <div class="api-key-display" id="key-display">${escHtml(user.apiKey)}</div>
         <button class="btn btn-secondary" onclick="revealKey()">Show</button>
         <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
         <span class="copy-feedback" id="copy-fb">Copied!</span>
@@ -144,33 +167,10 @@
         <code style="background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:11px">X-Api-Key: your_key</code><br><br>
         <strong style="color:var(--text)">Claude Code MCP:</strong><br>
         <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: your_key"</code><br>
-        <strong style="color:var(--text)">Claude Desktop MCP:</strong><br>
-        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "type": "http", "url": "https://bpel2orkes.kshetra.studio/mcp/", "headers": { "X-Api-Key": "your_key" } } } }</code>
+        <strong style="color:var(--text)">Claude Desktop MCP (via mcp-remote):</strong><br>
+        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:your_key"] } } }</code>
       </div>
     </div>
-
-    ${user.tier === 'free' ? `
-    <!-- Upgrade card (free tier only — single clear CTA) -->
-    <div class="card upgrade-card">
-      <h3>Need more conversions?</h3>
-      <p style="font-size:13px;color:var(--text);margin-bottom:16px">
-        Get <strong>30 conversions for $10</strong> — one-time payment, no subscription.
-      </p>
-      <button class="btn btn-upgrade" onclick="checkout('developer')" id="upgrade-btn">
-        Upgrade to Developer — $10
-      </button>
-      <div style="margin-top:12px">
-        <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" style="font-size:12px;color:var(--muted)">
-          Need unlimited conversions? Ask about the Starter plan ($49/mo) →
-        </a>
-      </div>
-    </div>` : user.tier === 'developer' ? `
-    <div class="card">
-      <h3>Need more?</h3>
-      <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Starter Plan" style="font-size:13px;color:var(--accent)">
-        Ask about the Starter plan ($49/mo, unlimited conversions) →
-      </a>
-    </div>` : ''}
   `;
 
   // Full key (fetched separately so we don't expose it in initial load)
@@ -193,27 +193,37 @@
     setTimeout(() => fb.classList.remove('show'), 2000);
   };
 
-  window.checkout = async (tier) => {
-    const btn = document.getElementById('upgrade-btn');
+  window.topup = async (amount_cents) => {
+    const btn = document.getElementById('topup-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
     const r = await fetch('/api/v1/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tier }),
+      body: JSON.stringify({ amount_cents }),
       credentials: 'include',
     });
     const d = await r.json();
     if (d.url) { window.location.href = d.url; return; }
-    if (btn) { btn.disabled = false; btn.textContent = 'Upgrade to Developer — $10'; }
+    if (btn) { btn.disabled = false; btn.textContent = `$${(amount_cents/100).toFixed(0)} — ${amount_cents//centsPerConv} conv`; }
     if (r.status === 503) {
-      alert("Payments aren't enabled yet — email dinesh@kshetra.studio to upgrade manually for now.");
+      alert("Payments aren't enabled yet — email dinesh@kshetra.studio to add credits manually for now.");
     } else {
       alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
     }
   };
+
+  window.topupCustom = () => {
+    const input = document.getElementById('custom-amount');
+    const dollars = parseFloat(input.value);
+    if (!dollars || dollars < 5 || dollars > 1000) {
+      alert('Enter an amount between $5 and $1,000.');
+      return;
+    }
+    window.topup(Math.round(dollars * 100));
+  };
 })();
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 </body>
 </html>

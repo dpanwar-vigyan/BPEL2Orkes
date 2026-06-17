@@ -123,20 +123,22 @@ async def logout():
 @router.get("/api/v1/me")
 async def me(request: Request):
     """Return current user info. 401 if not signed in."""
-    from auth import get_user_by_id
+    from auth import get_user_by_id, conversions_remaining, CENTS_PER_CONVERSION
     session = get_session(request)
     if not session:
         return JSONResponse({"error": "not_authenticated"}, status_code=401)
     user = get_user_by_id(session["userId"])
     if not user:
         return JSONResponse({"error": "user_not_found"}, status_code=401)
-    credits_total = user.get("creditsTotal")
+    remaining = conversions_remaining(user)
+    balance_cents = int(user.get("creditBalanceCents", 0))
     return {
         "userId": user["userId"],
         "email": user["email"],
         "name": user["name"],
         "tier": user["tier"],
-        "apiKey": user["apiKey"][:12] + "…",  # masked
-        "creditsUsed": int(user.get("creditsUsed", 0)),
-        "creditsTotal": credits_total if credits_total == "unlimited" else int(credits_total or 0),
+        "apiKey": user["apiKey"][:12] + "…",
+        "creditBalanceCents": balance_cents,
+        "conversionsRemaining": remaining,
+        "centsPerConversion": CENTS_PER_CONVERSION,
     }

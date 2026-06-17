@@ -2,11 +2,18 @@
 Auth, user management, and quota enforcement for BPEL2Orkes.
 
 DynamoDB schema (single table: bpel2orkes-users-{env}):
-  PK: userId (str)  — "{provider}:{providerUserId}"  e.g. "google:1234567"
+  PK: userId (str)  — "{provider}:{providerUserId}"  e.g. "github:1234567"
   GSI: apiKey-index on apiKey (str)
 
 User record fields:
-  userId, email, name, provider, apiKey, tier, creditsTotal, creditsUsed, createdAt
+  userId, email, name, provider, apiKey, tier, creditBalanceCents, createdAt
+
+Credit model:
+  - All users have a creditBalanceCents balance (integer, atomic in DynamoDB)
+  - Each conversion deducts CENTS_PER_CONVERSION from the balance
+  - Stripe payments add amount_total cents to the balance
+  - tier="starter" bypasses quota entirely (manual enterprise accounts)
+  - Configurable rate: change CENTS_PER_CONVERSION to reprice without a data migration
 """
 
 from __future__ import annotations
@@ -22,7 +29,6 @@ from boto3.dynamodb.conditions import Key
 from fastapi import Header, HTTPException, Request
 
 def _session_user(request: Request) -> Optional[dict]:
-    """Resolve a user from the Web UI's signed session cookie (OAuth sign-in)."""
     from oauth import get_session
     session = get_session(request)
     if not session:
@@ -35,13 +41,11 @@ ENV = os.getenv("BPEL2ORKES_ENV", "local")
 TABLE_NAME = f"bpel2orkes-users-{ENV}"
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
-TIERS = {
-    "free":      {"credits": 50,  "price": 0},
-    "developer": {"credits": 30,  "price": 10},
-    "starter":   {"credits": None, "price": 49},  # None = unlimited
-}
-
-FREE_CREDITS = 50
+# Pricing rate — single constant to change conversion cost across all surfaces
+CENTS_PER_CONVERSION = 10          # $0.10/conversion → $1 = 10 conversions
+FREE_CREDIT_CENTS    = 500         # 50 free conversions ($5 equivalent) on sign-up
+MIN_TOPUP_CENTS      = 500         # $5 minimum top-up
+MAX_TOPUP_CENTS      = 100_000     # $1,000 maximum single top-up
 
 
 # ── DynamoDB client ────────────────────────────────────────────────────────────
@@ -53,31 +57,36 @@ def _table():
 
 
 def _auth_bypassed() -> bool:
-    """
-    Auth is only bypassed for explicit local development (no env var set, or
-    set to "local"). Any AWS/DynamoDB error on staging or production must
-    raise, not silently fall back to open access — fail closed, not open.
-    """
     return ENV == "local"
 
 
 # ── User operations ────────────────────────────────────────────────────────────
 
 def _new_api_key(tier: str = "free") -> str:
-    prefix = {"free": "bpel2_free_", "developer": "bpel2_dev_", "starter": "bpel2_start_"}.get(tier, "bpel2_")
+    prefix = {"free": "bpel2_free_", "paid": "bpel2_", "starter": "bpel2_start_"}.get(tier, "bpel2_")
     return prefix + secrets.token_urlsafe(16)
 
 
 def get_or_create_user(provider: str, provider_user_id: str, email: str, name: str) -> dict:
-    """Upsert a user by OAuth identity. Returns the full user record."""
     user_id = f"{provider}:{provider_user_id}"
     table = _table()
 
     resp = table.get_item(Key={"userId": user_id})
     if "Item" in resp:
-        return resp["Item"]
+        item = resp["Item"]
+        # Migrate legacy creditsUsed/creditsTotal records to creditBalanceCents
+        if "creditBalanceCents" not in item:
+            total = int(item.get("creditsTotal", 50))
+            used  = int(item.get("creditsUsed", 0))
+            balance = max(0, (total - used)) * CENTS_PER_CONVERSION
+            table.update_item(
+                Key={"userId": user_id},
+                UpdateExpression="SET creditBalanceCents = :b REMOVE creditsTotal, creditsUsed",
+                ExpressionAttributeValues={":b": balance},
+            )
+            item["creditBalanceCents"] = balance
+        return item
 
-    # New user — issue free API key
     api_key = _new_api_key("free")
     user = {
         "userId": user_id,
@@ -86,8 +95,7 @@ def get_or_create_user(provider: str, provider_user_id: str, email: str, name: s
         "provider": provider,
         "apiKey": api_key,
         "tier": "free",
-        "creditsTotal": FREE_CREDITS,
-        "creditsUsed": 0,
+        "creditBalanceCents": FREE_CREDIT_CENTS,
         "createdAt": int(time.time()),
     }
     table.put_item(Item=user)
@@ -95,7 +103,6 @@ def get_or_create_user(provider: str, provider_user_id: str, email: str, name: s
 
 
 def get_user_by_api_key(api_key: str) -> Optional[dict]:
-    """Look up a user by their API key via the GSI."""
     resp = _table().query(
         IndexName="apiKey-index",
         KeyConditionExpression=Key("apiKey").eq(api_key),
@@ -110,86 +117,75 @@ def get_user_by_id(user_id: str) -> Optional[dict]:
     return resp.get("Item")
 
 
-def increment_usage(user_id: str) -> Optional[dict]:
-    """Atomically increment creditsUsed. No-op for the local-dev bypass pseudo-user."""
+def deduct_credit(user_id: str) -> Optional[dict]:
+    """Atomically deduct one conversion's cost. No-op for local dev."""
     if user_id == "local":
         return None
     resp = _table().update_item(
         Key={"userId": user_id},
-        UpdateExpression="SET creditsUsed = creditsUsed + :one",
-        ExpressionAttributeValues={":one": 1},
+        UpdateExpression="SET creditBalanceCents = creditBalanceCents - :cost",
+        ExpressionAttributeValues={":cost": CENTS_PER_CONVERSION},
         ReturnValues="ALL_NEW",
     )
     return resp["Attributes"]
 
 
-def upgrade_user(user_id: str, tier: str) -> dict:
-    """Upgrade user tier and reset/add credits (called from Stripe webhook)."""
-    credits_total = TIERS[tier]["credits"]  # None = unlimited
+def add_credits(user_id: str, amount_cents: int) -> dict:
+    """Add purchased credits (from Stripe webhook). Upgrades tier to 'paid'."""
     resp = _table().update_item(
         Key={"userId": user_id},
-        UpdateExpression="SET tier = :tier, creditsTotal = :ct, apiKey = :key",
-        ExpressionAttributeValues={
-            ":tier": tier,
-            ":ct": credits_total if credits_total is not None else "unlimited",
-            ":key": _new_api_key(tier),
-        },
+        UpdateExpression="SET creditBalanceCents = creditBalanceCents + :amt, tier = :tier",
+        ExpressionAttributeValues={":amt": amount_cents, ":tier": "paid"},
         ReturnValues="ALL_NEW",
     )
     return resp["Attributes"]
 
 
-# ── Quota middleware helpers ───────────────────────────────────────────────────
+# ── Quota helpers ──────────────────────────────────────────────────────────────
+
+def conversions_remaining(user: dict) -> int | str:
+    """Returns int conversions remaining, or 'unlimited' for starter accounts."""
+    if user.get("tier") == "starter":
+        return "unlimited"
+    balance = int(user.get("creditBalanceCents", 0))
+    return max(0, balance // CENTS_PER_CONVERSION)
+
 
 def quota_status(user: dict) -> Optional[dict]:
-    """
-    Returns None if the user has quota remaining (or is unlimited), else a dict
-    describing the exhausted state — shared shape used by both the FastAPI 429
-    response and the MCP tool error payload, so both surfaces report identically.
-    """
-    if user["tier"] == "starter":
+    """Returns None if quota OK, else an error dict (shared by REST 429 and MCP error)."""
+    if user.get("tier") == "starter":
         return None
-    credits_total = user.get("creditsTotal")
-    if credits_total == "unlimited":
-        return None
-    used = int(user.get("creditsUsed", 0))
-    total = int(credits_total or 0)
-    if used >= total:
+    balance = int(user.get("creditBalanceCents", 0))
+    if balance < CENTS_PER_CONVERSION:
+        remaining = conversions_remaining(user)
         return {
             "error": "quota_exceeded",
-            "message": f"You've used all {total} conversions on the {user['tier']} plan.",
-            "creditsUsed": used,
-            "creditsTotal": total,
-            "upgradeUrl": "https://bpel2orkes.kshetra.studio/dashboard",
+            "message": "You've run out of conversion credits. Top up to continue.",
+            "creditBalanceCents": balance,
+            "conversionsRemaining": remaining,
+            "topUpUrl": "https://bpel2orkes.kshetra.studio/dashboard",
         }
     return None
 
 
 def check_quota(user: dict) -> None:
-    """Raise 429 if user has exhausted their credits. Unlimited tiers always pass."""
     status = quota_status(user)
     if status:
         raise HTTPException(status_code=429, detail=status)
 
 
-# ── MCP tool auth — same API key, no FastAPI Request available ────────────────
+# ── MCP tool auth ──────────────────────────────────────────────────────────────
 
 def resolve_mcp_caller(api_key: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
-    """
-    Resolve and quota-check an MCP tool caller from their X-Api-Key header.
-    Returns (user, None) on success, or (None, error_message) on failure —
-    the error_message is meant to be returned directly as {"error": ...} from
-    the calling tool, since MCP tools can't raise HTTPException like the REST API.
-    """
     if _auth_bypassed():
-        return {"userId": "local", "tier": "starter", "creditsUsed": 0, "creditsTotal": "unlimited"}, None
+        return {"userId": "local", "tier": "starter", "creditBalanceCents": 99999}, None
 
     if not api_key:
         return None, (
             "Missing X-Api-Key header. Sign in at https://bpel2orkes.kshetra.studio "
             "to get your free API key, then add it to your MCP config, e.g.: "
-            'claude mcp add --transport http --header "X-Api-Key: your_key" '
-            "bpel2orkes https://bpel2orkes.kshetra.studio/mcp/"
+            'claude mcp add --transport http bpel2orkes '
+            'https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: your_key"'
         )
 
     user = get_user_by_api_key(api_key)
@@ -198,25 +194,19 @@ def resolve_mcp_caller(api_key: Optional[str]) -> tuple[Optional[dict], Optional
 
     status = quota_status(user)
     if status:
-        return None, status["message"] + f" Upgrade at {status['upgradeUrl']}"
+        return None, status["message"] + f" Top up at {status['topUpUrl']}"
 
     return user, None
 
 
-# ── FastAPI dependency: resolve caller from X-Api-Key or session ──────────────
+# ── FastAPI dependencies ───────────────────────────────────────────────────────
 
 async def require_api_key(
     request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-Api-Key"),
 ) -> dict:
-    """
-    FastAPI dependency. Resolves caller from X-Api-Key header (REST API / MCP)
-    or the signed session cookie (Web UI, set on OAuth sign-in).
-    Raises 401 if neither is present/valid, 429 if over quota.
-    """
     if _auth_bypassed():
-        # Local dev only — no DynamoDB required to test the convert pipeline
-        return {"userId": "local", "tier": "starter", "creditsUsed": 0, "creditsTotal": "unlimited"}
+        return {"userId": "local", "tier": "starter", "creditBalanceCents": 99999}
 
     user = None
     if x_api_key:
@@ -230,7 +220,7 @@ async def require_api_key(
                 status_code=401,
                 detail={
                     "error": "not_authenticated",
-                    "message": "Sign in at https://bpel2orkes.kshetra.studio to get your free API key, then pass it as X-Api-Key header — or sign in via the Web UI.",
+                    "message": "Sign in at https://bpel2orkes.kshetra.studio to get your free API key.",
                 },
             )
 
@@ -242,7 +232,6 @@ async def optional_api_key(
     request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-Api-Key"),
 ) -> Optional[dict]:
-    """Like require_api_key but returns None instead of raising if no key/session provided."""
     if _auth_bypassed():
         return None
     user = get_user_by_api_key(x_api_key) if x_api_key else _session_user(request)

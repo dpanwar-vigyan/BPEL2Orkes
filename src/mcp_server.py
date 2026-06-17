@@ -51,7 +51,7 @@ from bpel_parser import parse_bpel, BPELParseError
 from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
 from diagram_generator import generate_migration_summary
-from auth import resolve_mcp_caller, increment_usage
+from auth import resolve_mcp_caller, deduct_credit
 
 import httpx
 
@@ -129,7 +129,7 @@ def convert_bpel(bpel_xml: str) -> dict:
 
     result = _convert_bpel_core(bpel_xml)
     if "error" not in result:
-        increment_usage(user["userId"])
+        deduct_credit(user["userId"])
     return result
 
 
@@ -163,7 +163,7 @@ async def validate_on_orkes(
     bundle_result = _convert_bpel_core(bpel_xml)
     if "error" in bundle_result:
         return bundle_result
-    increment_usage(user["userId"])
+    deduct_credit(user["userId"])
 
     base_url = orkes_base_url.rstrip("/")
 

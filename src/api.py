@@ -397,50 +397,57 @@ async def my_key(request: Request):
 
 @app.post("/api/v1/checkout")
 async def checkout(request: Request):
-    """Create a Stripe Checkout session for tier upgrade."""
+    """Create a Stripe Checkout session to top up conversion credits."""
     import stripe as _stripe
     from oauth import get_session as _gs
-    from auth import get_user_by_id, TIERS
+    from auth import get_user_by_id, MIN_TOPUP_CENTS, MAX_TOPUP_CENTS, CENTS_PER_CONVERSION
 
     session = _gs(request)
     if not session:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     body = await request.json()
-    tier = body.get("tier", "developer")
-    if tier not in TIERS or TIERS[tier]["price"] == 0:
-        raise HTTPException(status_code=400, detail="Invalid tier")
+    amount_cents = int(body.get("amount_cents", 0))
+    if amount_cents < MIN_TOPUP_CENTS or amount_cents > MAX_TOPUP_CENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Amount must be between ${MIN_TOPUP_CENTS//100} and ${MAX_TOPUP_CENTS//100}"
+        )
 
     stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
     if not stripe_key:
         raise HTTPException(status_code=503, detail="Stripe not configured")
 
+    conversions = amount_cents // CENTS_PER_CONVERSION
     _stripe.api_key = stripe_key
-    base = ORKES_BASE_URL.replace("developer.orkescloud.com", "bpel2orkes.kshetra.studio")
     checkout_session = _stripe.checkout.Session.create(
         payment_method_types=["card"],
         line_items=[{
             "price_data": {
                 "currency": "usd",
-                "product_data": {"name": f"BPEL2Orkes {tier.title()} Plan"},
-                "unit_amount": TIERS[tier]["price"] * 100,
+                "product_data": {
+                    "name": "BPEL2Orkes Conversion Credits",
+                    "description": f"{conversions} conversions at ${CENTS_PER_CONVERSION/100:.2f} each",
+                },
+                "unit_amount": amount_cents,
             },
             "quantity": 1,
         }],
         mode="payment",
-        success_url=f"{BASE_URL}/dashboard?upgraded=1",
+        success_url=f"{BASE_URL}/dashboard?topped_up=1",
         cancel_url=f"{BASE_URL}/dashboard",
         client_reference_id=session["userId"],
         customer_email=session["email"],
+        metadata={"amount_cents": str(amount_cents)},
     )
     return {"url": checkout_session.url}
 
 
 @app.post("/webhooks/stripe")
 async def stripe_webhook(request: Request):
-    """Stripe webhook — upgrades user tier on successful payment."""
+    """Stripe webhook — adds purchased credits to user's balance."""
     import stripe as _stripe
-    from auth import upgrade_user
+    from auth import add_credits
 
     stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
@@ -458,10 +465,9 @@ async def stripe_webhook(request: Request):
     if event["type"] == "checkout.session.completed":
         sess = event["data"]["object"]
         user_id = sess.get("client_reference_id")
-        amount = sess.get("amount_total", 0)
-        tier = "developer" if amount <= 1000 else "starter"
-        if user_id:
-            upgrade_user(user_id, tier)
+        amount_cents = int(sess.get("amount_total", 0))
+        if user_id and amount_cents > 0:
+            add_credits(user_id, amount_cents)
 
     return {"received": True}
 
