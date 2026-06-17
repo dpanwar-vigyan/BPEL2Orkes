@@ -80,6 +80,7 @@
 <script>
 (async () => {
   const app = document.getElementById('app');
+  try {
 
   // Load user
   const resp = await fetch('/api/v1/me');
@@ -221,6 +222,11 @@
     }
     window.topup(Math.round(dollars * 100));
   };
+
+  } catch(e) {
+    app.innerHTML = `<div style="color:#ef4444;padding:20px;font-family:monospace;font-size:13px">
+      <strong>Dashboard error (please share with support):</strong><br>${e}</div>`;
+  }
 })();
 
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
