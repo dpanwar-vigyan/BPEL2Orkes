@@ -68,13 +68,15 @@ GITHUB_REDIRECT_URI  = f"{BASE_URL}/auth/github/callback"
 async def github_login(request: Request):
     if not GITHUB_CLIENT_ID:
         return JSONResponse({"error": "GitHub OAuth not configured"}, status_code=503)
-    client = AsyncOAuth2Client(
-        client_id=GITHUB_CLIENT_ID, client_secret=GITHUB_CLIENT_SECRET,
-        redirect_uri=GITHUB_REDIRECT_URI,
+    import secrets as _secrets
+    state = _secrets.token_urlsafe(16)
+    params = (
+        f"client_id={GITHUB_CLIENT_ID}"
+        f"&redirect_uri={GITHUB_REDIRECT_URI}"
+        f"&scope=user:email"
+        f"&state={state}"
     )
-    uri, state = client.create_authorization_url(
-        "https://github.com/login/oauth/authorize", scope="user:email",
-    )
+    uri = f"https://github.com/login/oauth/authorize?{params}"
     response = RedirectResponse(uri)
     response.set_cookie("oauth_state", state, httponly=True, secure=(ENV != "local"), max_age=300)
     return response
