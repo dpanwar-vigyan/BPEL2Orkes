@@ -1,5 +1,5 @@
 #!/bin/bash
-# Manual deploy script — builds, pushes to ECR, forces ECS redeploy
+# Deploy script — builds ARM64 Lambda image, pushes to ECR, updates Lambda function
 # Usage:
 #   ./scripts/deploy.sh staging
 #   ./scripts/deploy.sh production
@@ -9,21 +9,15 @@ set -euo pipefail
 ENV=${1:-staging}
 ACCOUNT_ID="835422347653"
 REGION="ap-southeast-2"
-REPO="bpel2orkes"
-ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO}"
+ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/bpel2orkes"
 TAG=$(git rev-parse --short HEAD)
+IMAGE_TAG="${ENV}-${TAG}"
+FUNCTION="bpel2orkes-${ENV}"
 
 if [[ "$ENV" == "production" ]]; then
-  CLUSTER="bpel2orkes-production"
-  SERVICE="bpel2orkes-production"
-  IMAGE_TAG="prod-${TAG}"
   read -p "⚠️  Deploying to PRODUCTION. Are you sure? (yes/no): " CONFIRM
   [[ "$CONFIRM" == "yes" ]] || { echo "Aborted."; exit 1; }
-elif [[ "$ENV" == "staging" ]]; then
-  CLUSTER="bpel2orkes-staging"
-  SERVICE="bpel2orkes-staging"
-  IMAGE_TAG="staging-${TAG}"
-else
+elif [[ "$ENV" != "staging" ]]; then
   echo "Usage: $0 [staging|production]"
   exit 1
 fi
@@ -35,52 +29,41 @@ echo "→ Authenticating with ECR..."
 aws ecr get-login-password --region "$REGION" \
   | docker login --username AWS --password-stdin "$ECR_URI"
 
-# 2. Build image
-echo "→ Building Docker image..."
-docker build --platform linux/amd64 -t "${REPO}:${IMAGE_TAG}" .
+# 2. Build + push (ARM64, single-arch manifest so Lambda accepts it)
+echo "→ Building and pushing Docker image..."
+docker buildx build \
+  --platform linux/arm64 \
+  -f Dockerfile.lambda \
+  --provenance=false \
+  --sbom=false \
+  -t "${ECR_URI}:${IMAGE_TAG}" \
+  -t "${ECR_URI}:${ENV}-latest" \
+  --push \
+  .
 
-# 3. Tag and push
-echo "→ Pushing to ECR..."
-docker tag "${REPO}:${IMAGE_TAG}" "${ECR_URI}:${IMAGE_TAG}"
-docker tag "${REPO}:${IMAGE_TAG}" "${ECR_URI}:${ENV}-latest"
-docker push "${ECR_URI}:${IMAGE_TAG}"
-docker push "${ECR_URI}:${ENV}-latest"
-
-# For production also push as prod-latest (what ECS task definition references)
-if [[ "$ENV" == "production" ]]; then
-  docker tag "${REPO}:${IMAGE_TAG}" "${ECR_URI}:prod-latest"
-  docker push "${ECR_URI}:prod-latest"
-fi
-
-# 4. Force ECS to redeploy with new image
-echo "→ Triggering ECS redeploy..."
-aws ecs update-service \
+# 3. Update Lambda function code
+echo "→ Updating Lambda function..."
+aws lambda update-function-code \
   --region "$REGION" \
-  --cluster "$CLUSTER" \
-  --service "$SERVICE" \
-  --force-new-deployment \
-  --query "service.deployments[0].{status:status,desiredCount:desiredCount}" \
+  --function-name "$FUNCTION" \
+  --image-uri "${ECR_URI}:${IMAGE_TAG}" \
+  --query "{Status:LastUpdateStatus,State:State}" \
   --output table
 
-echo ""
-echo "✓ Deploy triggered for ${ENV}"
-echo "  Image: ${ECR_URI}:${IMAGE_TAG}"
-echo ""
-echo "→ Watch rollout:"
-echo "  aws ecs wait services-stable --region ${REGION} --cluster ${CLUSTER} --services ${SERVICE}"
-echo ""
+# 4. Wait for update to complete
+echo "→ Waiting for Lambda to stabilise..."
+aws lambda wait function-updated --region "$REGION" --function-name "$FUNCTION"
 
-# 5. Smoke test (staging only — prod smoke test is manual)
-if [[ "$ENV" == "staging" ]]; then
-  echo "→ Waiting 30s for service to stabilise..."
-  sleep 30
-  STAGING_URL="https://staging.bpel2orkes.kshetra.studio"
-  echo "→ Smoke test: ${STAGING_URL}/api/v1/health"
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${STAGING_URL}/api/v1/health")
-  if [[ "$STATUS" == "200" ]]; then
-    echo "✓ Health check passed (HTTP ${STATUS})"
-  else
-    echo "✗ Health check failed (HTTP ${STATUS}) — check ECS logs"
-    exit 1
-  fi
+# 5. Smoke test
+URL="https://$([ "$ENV" == "production" ] && echo "bpel2orkes.kshetra.studio" || echo "staging.bpel2orkes.kshetra.studio")"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${URL}/api/v1/health")
+if [[ "$STATUS" == "200" ]]; then
+  echo "✓ Health check passed — ${URL}"
+else
+  echo "✗ Health check failed (HTTP ${STATUS}) — check Lambda logs:"
+  echo "  aws logs tail /aws/lambda/${FUNCTION} --region ${REGION} --since 5m"
+  exit 1
 fi
+
+echo ""
+echo "✓ Deploy complete: ${ECR_URI}:${IMAGE_TAG}"
