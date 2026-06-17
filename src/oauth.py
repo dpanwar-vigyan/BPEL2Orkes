@@ -1,14 +1,11 @@
 """
-Google and GitHub OAuth2 sign-in routes for BPEL2Orkes.
+GitHub OAuth2 sign-in routes for BPEL2Orkes.
 
 Env vars required:
-  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
   SESSION_SECRET   — random string for signing session cookies
 
 Routes:
-  GET /auth/google           → redirect to Google
-  GET /auth/google/callback  → exchange code → create user → set cookie → /dashboard
   GET /auth/github           → redirect to GitHub
   GET /auth/github/callback  → exchange code → create user → set cookie → /dashboard
   GET /auth/logout           → clear cookie → /
@@ -17,12 +14,9 @@ Routes:
 
 from __future__ import annotations
 
-import json
 import os
-import time
 
 import httpx
-from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -61,51 +55,6 @@ def get_session(request: Request) -> dict | None:
         return _signer.loads(token, max_age=SESSION_MAX_AGE)
     except (BadSignature, SignatureExpired):
         return None
-
-
-# ── Google OAuth ───────────────────────────────────────────────────────────────
-
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI  = f"{BASE_URL}/auth/google/callback"
-
-
-@router.get("/auth/google", include_in_schema=False)
-async def google_login(request: Request):
-    if not GOOGLE_CLIENT_ID:
-        return JSONResponse({"error": "Google OAuth not configured"}, status_code=503)
-    client = AsyncOAuth2Client(
-        client_id=GOOGLE_CLIENT_ID, client_secret=GOOGLE_CLIENT_SECRET,
-        redirect_uri=GOOGLE_REDIRECT_URI,
-    )
-    uri, state = client.create_authorization_url(
-        "https://accounts.google.com/o/oauth2/v2/auth",
-        scope="openid email profile",
-    )
-    response = RedirectResponse(uri)
-    response.set_cookie("oauth_state", state, httponly=True, secure=(ENV != "local"), max_age=300)
-    return response
-
-
-@router.get("/auth/google/callback", include_in_schema=False)
-async def google_callback(request: Request, code: str, state: str):
-    stored_state = request.cookies.get("oauth_state", "")
-    client = AsyncOAuth2Client(
-        client_id=GOOGLE_CLIENT_ID, client_secret=GOOGLE_CLIENT_SECRET,
-        redirect_uri=GOOGLE_REDIRECT_URI, state=stored_state,
-    )
-    async with client:
-        await client.fetch_token(
-            "https://oauth2.googleapis.com/token", code=code,
-            grant_type="authorization_code",
-        )
-        userinfo_resp = await client.get("https://www.googleapis.com/oauth2/v3/userinfo")
-    info = userinfo_resp.json()
-    user = get_or_create_user("google", info["sub"], info.get("email", ""), info.get("name", ""))
-    response = RedirectResponse("/dashboard")
-    response.delete_cookie("oauth_state")
-    _set_session(response, user)
-    return response
 
 
 # ── GitHub OAuth ───────────────────────────────────────────────────────────────

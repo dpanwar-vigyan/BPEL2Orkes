@@ -245,8 +245,6 @@ class Bpel2OrkesServerless(Stack):
             environment={
                 "BPEL2ORKES_ENV": env_name,
                 "BPEL_MAX_SIZE_MB": "5" if env_name == "production" else "10",
-                "GOOGLE_CLIENT_ID": secret_env("GOOGLE_CLIENT_ID"),
-                "GOOGLE_CLIENT_SECRET": secret_env("GOOGLE_CLIENT_SECRET"),
                 "GITHUB_CLIENT_ID": secret_env("GITHUB_CLIENT_ID"),
                 "GITHUB_CLIENT_SECRET": secret_env("GITHUB_CLIENT_SECRET"),
                 "SESSION_SECRET": secret_env("SESSION_SECRET"),

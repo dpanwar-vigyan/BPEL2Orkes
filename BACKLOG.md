@@ -216,8 +216,8 @@ claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| AU-1 | Google OAuth sign-in (`/auth/google`, `/auth/google/callback`) | 🔲 V1.1 | Authlib + FastAPI |
-| AU-2 | GitHub OAuth sign-in (`/auth/github`, `/auth/github/callback`) | 🔲 V1.1 | Same flow |
+| AU-1 | ~~Google OAuth sign-in~~ | ~~🔲 V1.1~~ | Removed — GitHub-only, developer-focused tool. Google routes deleted from `oauth.py`. |
+| AU-2 | GitHub OAuth sign-in (`/auth/github`, `/auth/github/callback`) | 🟢 Done | Authlib + FastAPI |
 | AU-3 | User record in DynamoDB (`userId`, `email`, `provider`, `apiKey`, `tier`, `usageCount`) | 🔲 V1.1 | No RDS needed — single-table design |
 | AU-4 | Auto-issue free API key on first sign-in (`bpel2_free_` + random 16 chars) | 🔲 V1.1 | Stored hashed in DynamoDB |
 | AU-5 | `X-Api-Key` middleware — validate key, load user, check quota before convert endpoints | 🔲 V1.1 | 401 if missing/invalid, 429 if over quota |
