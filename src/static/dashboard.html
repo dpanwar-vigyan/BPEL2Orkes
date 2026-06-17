@@ -80,10 +80,22 @@
 <script>
 (async () => {
   const app = document.getElementById('app');
+
+  // Fallback: if still loading after 6s, show what went wrong
+  const fallback = setTimeout(() => {
+    if (app.textContent.includes('Loading')) {
+      app.innerHTML = '<div style="color:#f59e0b;padding:20px;font-size:13px">Dashboard timed out — the /api/v1/me request did not respond within 6 seconds. This is likely a session or network issue. <a href="/auth/logout" style="color:#6c63ff">Sign out and try again</a></div>';
+    }
+  }, 6000);
+
   try {
 
-  // Load user
-  const resp = await fetch('/api/v1/me');
+  // Load user (abort after 8s)
+  const ctrl = new AbortController();
+  const fetchTimer = setTimeout(() => ctrl.abort(), 8000);
+  const resp = await fetch('/api/v1/me', { signal: ctrl.signal });
+  clearTimeout(fetchTimer);
+  clearTimeout(fallback);
   if (!resp.ok) {
     window.location.href = '/';
     return;
