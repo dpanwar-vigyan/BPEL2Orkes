@@ -38,7 +38,7 @@ from pattern_mapper import map_bpel_to_conductor
 from code_generator import generate
 from diagram_generator import generate_mermaid, generate_migration_summary
 from mcp_server import mcp
-from auth import require_api_key, increment_usage, optional_api_key
+from auth import require_api_key, deduct_credit, optional_api_key
 from oauth import router as oauth_router, get_session
 
 # ── MCP ASGI app (must be created before FastAPI so lifespan can be wired) ─────
@@ -216,7 +216,7 @@ async def convert(request: Request, _user: dict = Depends(require_api_key)):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
-    increment_usage(_user["userId"])
+    deduct_credit(_user["userId"])
     return {
         "durationMs": ms,
         "warningCount": len(bundle.get("warnings", [])),
@@ -239,7 +239,7 @@ async def convert_file(file: UploadFile = File(...), _user: dict = Depends(requi
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion error: {exc}")
 
-    increment_usage(_user["userId"])
+    deduct_credit(_user["userId"])
     return {
         "filename": file.filename,
         "durationMs": ms,
