@@ -232,6 +232,7 @@ claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes
 | AU-14 | Stripe webhook endpoint (`POST /webhooks/stripe`) | 🔲 V1.1 | Verify signature, update DynamoDB on `checkout.session.completed` |
 | AU-15 | `/api/v1/me` endpoint — returns current user tier, usage, API key (masked) | 🔲 V1.1 | Used by dashboard and MCP tool |
 | AU-16 | **API key rotation** — "Rotate Key" button in dashboard issues a new `bpel2_*` key and immediately invalidates the old one; one-click update shown for MCP config snippet | 🔲 Planned | Needed for: accidental key exposure, key sharing revocation, periodic security hygiene. New key inherits same tier/credits. Old key rejected with 401 + clear "key was rotated" message so users know to update their config rather than thinking auth is broken. |
+| AU-17 | **Session token recycling** — sliding-window refresh: reissue a new signed session cookie on each request if the current one is within 1 day of expiry (transparent to user). Force-invalidate all sessions on: API key rotation (AU-16), sign-out, suspected abuse. Graceful re-auth flow: expired session → redirect to sign-in with `?next=<original URL>` so user lands back where they were, not at `/`. | 🔲 Planned | Current behaviour: 7-day cookie just expires silently — user hits a 401 mid-session with no explanation. OAuth access tokens from Google/GitHub are short-lived (~1hr) and not currently refreshed either; add refresh-token storage + silent refresh before they expire. |
 
 ### SaaS — Web UI (Kickstarter / Try It Now)
 
