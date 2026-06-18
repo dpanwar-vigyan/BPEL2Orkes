@@ -6,68 +6,122 @@
 <title>BPEL2Orkes — Dashboard</title>
 <style>
   :root {
-    --bg: #0f1117; --surface: #1a1d27; --border: #2e3147;
-    --accent: #6c63ff; --accent-hover: #8b84ff;
-    --success: #22c55e; --warn: #f59e0b; --error: #ef4444;
-    --text: #e2e8f0; --muted: #94a3b8; --code-bg: #111827;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --mono: "JetBrains Mono", "Fira Code", monospace;
+    --bg:           #ffffff;
+    --surface:      #f8fafc;
+    --surface2:     #f1f5f9;
+    --border:       #e2e8f0;
+    --accent:       #6c63ff;
+    --accent-hover: #5a52e8;
+    --accent-light: #ede9ff;
+    --success:      #16a34a;
+    --warn:         #d97706;
+    --error:        #dc2626;
+    --text:         #1e293b;
+    --muted:        #64748b;
+    --code-bg:      #f1f5f9;
+    --code-text:    #334155;
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
-  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; display: flex; align-items: center; gap: 16px; height: 56px; }
-  header h1 { font-size: 18px; font-weight: 700; }
-  header h1 span { color: var(--accent); }
-  .back-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
-  .back-btn:hover { background: #1f2330; border-color: var(--accent); }
-  .header-links { margin-left: auto; display: flex; gap: 16px; align-items: center; }
-  .header-links a { color: var(--muted); text-decoration: none; font-size: 13px; }
-  .header-links a:hover { color: var(--text); }
-  .container { max-width: 680px; margin: 48px auto; padding: 0 24px; }
-  h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+
+  /* ── Header ── */
+  header {
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 60px;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .wordmark { display: flex; flex-direction: column; gap: 1px; text-decoration: none; }
+  .wordmark-main { font-size: 17px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); line-height: 1; }
+  .wordmark-main span { color: var(--accent); }
+  .wordmark-sub { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: 0.8px; text-transform: uppercase; }
+  .ktools-badge { background: var(--accent-light); color: var(--accent); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .back-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; transition: color .15s, border-color .15s, background .15s; }
+  .back-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-light); }
+  .header-links { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .header-links a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 6px; transition: color .15s; }
+  .header-links a:hover { color: var(--error); }
+
+  /* ── Main layout ── */
+  .container { max-width: 700px; margin: 48px auto; padding: 0 24px 80px; }
+  h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.3px; }
   .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
-  .card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); margin-bottom: 12px; }
-  .stat-row { display: flex; gap: 24px; }
-  .stat { display: flex; flex-direction: column; gap: 2px; }
-  .stat .num { font-size: 28px; font-weight: 800; line-height: 1; }
+
+  /* ── Cards ── */
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .card h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.9px; color: var(--muted); margin-bottom: 14px; }
+  .stat-row { display: flex; gap: 28px; }
+  .stat { display: flex; flex-direction: column; gap: 3px; }
+  .stat .num { font-size: 30px; font-weight: 800; line-height: 1; }
   .stat .lbl { font-size: 11px; color: var(--muted); }
   .num-green { color: var(--success); }
   .num-amber { color: var(--warn); }
+
+  /* ── Tier badge ── */
   .tier-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-  .tier-free { background: #1e3a5f; color: #93c5fd; }
-  .tier-developer { background: #2d2a6e; color: #a5b4fc; }
-  .tier-starter { background: #166534; color: #86efac; }
+  .tier-free      { background: #dbeafe; color: #1e40af; }
+  .tier-developer { background: var(--accent-light); color: var(--accent); }
+  .tier-starter   { background: #dcfce7; color: #166534; }
+
+  /* ── API key ── */
   .api-key-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-  .api-key-display { font-family: var(--mono); font-size: 13px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; flex: 1; color: var(--muted); }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: background 0.15s; text-decoration: none; }
-  .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: #252840; }
+  .api-key-display { font-family: var(--mono); font-size: 13px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: background .15s, border-color .15s; text-decoration: none; font-family: var(--font); }
+  .btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--surface); border-color: #c7d2fe; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: var(--accent-hover); }
+  .btn-danger { background: #fff; color: var(--error); border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
   .btn-upgrade { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
   .btn-upgrade:hover { opacity: 0.9; }
-  .progress-wrap { margin-top: 12px; }
-  .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 4px; }
-  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
-  .progress-label { font-size: 11px; color: var(--muted); }
-  .copy-feedback { font-size: 11px; color: var(--success); margin-left: 8px; opacity: 0; transition: opacity 0.2s; }
-  .copy-feedback.show { opacity: 1; }
-  .upgrade-card { background: linear-gradient(135deg, #1c1033, #2d2a6e); border: 1px solid #4338ca; }
-  .upgrade-card h3 { color: #a5b4fc; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Upgrade card ── */
+  .upgrade-card { background: linear-gradient(135deg, #faf5ff, #ede9ff); border: 1px solid #c4b5fd; }
+  .upgrade-card h3 { color: var(--accent); }
+
+  /* ── Plan grid ── */
   .upgrade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-  .plan { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-  .plan.current { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .plan { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: #fff; }
+  .plan.current { border-color: var(--accent); background: var(--accent-light); }
   .plan-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
   .plan-price { font-size: 20px; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
   .plan-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
-  .loading { color: var(--muted); padding: 40px; text-align: center; }
+
+  /* ── Code snippets ── */
+  code { font-family: var(--mono); font-size: 11px; background: var(--code-bg); color: var(--code-text); }
+  code.block { display: block; padding: 8px 10px; border-radius: 6px; margin-top: 4px; overflow-x: auto; white-space: nowrap; }
+  code.inline { padding: 1px 6px; border-radius: 3px; }
+
+  /* ── Copy feedback ── */
+  .copy-feedback { font-size: 11px; color: var(--success); margin-left: 4px; opacity: 0; transition: opacity .2s; }
+  .copy-feedback.show { opacity: 1; }
+
+  /* ── Success toast ── */
+  .toast-success { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #166534; }
+
+  /* ── Loading ── */
+  .loading { color: var(--muted); padding: 60px; text-align: center; font-size: 15px; }
 </style>
 </head>
 <body>
 <header>
-  <a href="/" class="back-btn">← Back to Converter</a>
-  <h1>BPEL<span>2</span>Orkes</h1>
+  <a class="wordmark" href="/">
+    <span class="wordmark-main">BPEL<span>2</span>Orkes</span>
+    <span class="wordmark-sub">KTools · Kshetra Studio</span>
+  </a>
+  <span class="ktools-badge">KTools</span>
+  <a href="/" class="back-btn">← Converter</a>
   <div class="header-links">
     <a href="/auth/logout">Sign out</a>
   </div>
@@ -81,189 +135,190 @@
 (async () => {
   const app = document.getElementById('app');
 
-  // Fallback: if still loading after 6s, show what went wrong
   const fallback = setTimeout(() => {
     if (app.textContent.includes('Loading')) {
-      app.innerHTML = '<div style="color:#f59e0b;padding:20px;font-size:13px">Dashboard timed out — the /api/v1/me request did not respond within 6 seconds. This is likely a session or network issue. <a href="/auth/logout" style="color:#6c63ff">Sign out and try again</a></div>';
+      app.innerHTML = '<div style="color:var(--warn);padding:20px;font-size:13px">Dashboard timed out. <a href="/auth/logout" style="color:var(--accent)">Sign out and try again</a></div>';
     }
   }, 6000);
 
   try {
+    const ctrl = new AbortController();
+    const fetchTimer = setTimeout(() => ctrl.abort(), 8000);
+    const resp = await fetch('/api/v1/me', { signal: ctrl.signal });
+    clearTimeout(fetchTimer);
+    clearTimeout(fallback);
+    if (!resp.ok) { window.location.href = '/'; return; }
+    const user = await resp.json();
 
-  // Load user (abort after 8s)
-  const ctrl = new AbortController();
-  const fetchTimer = setTimeout(() => ctrl.abort(), 8000);
-  const resp = await fetch('/api/v1/me', { signal: ctrl.signal });
-  clearTimeout(fetchTimer);
-  clearTimeout(fallback);
-  if (!resp.ok) {
-    window.location.href = '/';
-    return;
-  }
-  const user = await resp.json();
+    const remaining = user.conversionsRemaining === 'unlimited' ? '∞' : user.conversionsRemaining;
+    const balanceDollars = (user.creditBalanceCents / 100).toFixed(2);
+    const centsPerConv = user.centsPerConversion || 10;
+    const rateLabel = `$${(centsPerConv/100).toFixed(2)}/conversion · $1 = ${Math.floor(100/centsPerConv)} conversions`;
+    const low = typeof user.conversionsRemaining === 'number' && user.conversionsRemaining <= 5;
+    const tierLabel = {'free':'Free','paid':'Paid','starter':'Starter (Unlimited)'}[user.tier] || user.tier;
+    const tierClass = user.tier === 'starter' ? 'tier-starter' : user.tier === 'paid' ? 'tier-developer' : 'tier-free';
+    const topped = new URLSearchParams(location.search).get('topped_up');
 
-  const remaining = user.conversionsRemaining === 'unlimited' ? '∞' : user.conversionsRemaining;
-  const balanceDollars = (user.creditBalanceCents / 100).toFixed(2);
-  const centsPerConv = user.centsPerConversion || 10;
-  const rateLabel = `$${(centsPerConv/100).toFixed(2)}/conversion · $1 = ${Math.floor(100/centsPerConv)} conversions`;
-  const low = typeof user.conversionsRemaining === 'number' && user.conversionsRemaining <= 5;
-  const tierLabel = {'free':'Free','paid':'Paid','starter':'Starter (Unlimited)'}[user.tier] || user.tier;
-  const tierClass = user.tier === 'starter' ? 'tier-starter' : user.tier === 'paid' ? 'tier-developer' : 'tier-free';
-  const topped = new URLSearchParams(location.search).get('topped_up');
+    app.innerHTML = `
+      ${topped ? '<div class="toast-success">✓ Credits added — ready to convert!</div>' : ''}
 
-  app.innerHTML = `
-    ${topped ? '<div style="background:#14532d;border:1px solid #22c55e;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#86efac">✓ Credits added — ready to convert!</div>' : ''}
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-      <h2 style="margin-bottom:0">Welcome back, ${escHtml(user.name.split(' ')[0])}</h2>
-      <a href="/" class="btn btn-primary">Start converting →</a>
-    </div>
-    <div class="subtitle">${escHtml(user.email)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <h2>Welcome back, ${escHtml(user.name.split(' ')[0])}</h2>
+        <a href="/" class="btn btn-primary">Convert now →</a>
+      </div>
+      <div class="subtitle">${escHtml(user.email)}</div>
 
-    <!-- Credit balance card -->
-    <div class="card">
-      <h3>Credits &amp; Usage</h3>
-      <div class="stat-row" style="margin-bottom:16px">
-        <div class="stat">
-          <span class="num ${low ? 'num-amber' : 'num-green'}">${remaining}</span>
-          <span class="lbl">Conversions left</span>
+      <!-- Credits card -->
+      <div class="card">
+        <h3>Credits &amp; Usage</h3>
+        <div class="stat-row" style="margin-bottom:16px">
+          <div class="stat">
+            <span class="num ${low ? 'num-amber' : 'num-green'}">${remaining}</span>
+            <span class="lbl">Conversions left</span>
+          </div>
+          <div class="stat">
+            <span class="num">$${balanceDollars}</span>
+            <span class="lbl">Credit balance</span>
+          </div>
+          <div class="stat" style="margin-left:auto;align-items:flex-end">
+            <span class="tier-badge ${tierClass}">${tierLabel}</span>
+          </div>
         </div>
-        <div class="stat">
-          <span class="num">$${balanceDollars}</span>
-          <span class="lbl">Credit balance</span>
+        <div style="font-size:12px;color:var(--muted)">${user.tier === 'starter' ? '✓ Unlimited conversions included' : rateLabel}</div>
+      </div>
+
+      <!-- Top-up card -->
+      ${user.tier !== 'starter' ? `
+      <div class="card upgrade-card">
+        <h3>Top up credits</h3>
+        <p style="font-size:13px;color:var(--text);margin-bottom:16px">
+          Add any amount — credits never expire. ${rateLabel}.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-secondary" onclick="topup(500)">$5 <span style="font-size:11px;color:var(--muted)">50 conv</span></button>
+          <button class="btn btn-secondary" onclick="topup(1000)">$10 <span style="font-size:11px;color:var(--muted)">100 conv</span></button>
+          <button class="btn btn-secondary" onclick="topup(2500)">$25 <span style="font-size:11px;color:var(--muted)">250 conv</span></button>
+          <button class="btn btn-upgrade" onclick="topup(10000)" id="topup-btn">$100 <span style="font-size:11px;opacity:0.85">1000 conv</span></button>
         </div>
-        <div class="stat" style="margin-left:auto;align-items:flex-end">
-          <span class="tier-badge ${tierClass}">${tierLabel}</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="custom-amount" type="number" min="5" max="1000" placeholder="Custom $amount"
+            style="width:150px;background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:13px;outline:none">
+          <button class="btn btn-secondary" onclick="topupCustom()">Add credits</button>
+        </div>
+        <div style="margin-top:14px">
+          <a href="mailto:hello@kshetra.studio?subject=BPEL2Orkes Unlimited Plan" style="font-size:12px;color:var(--muted)">
+            Need unlimited conversions? Ask about the Starter plan →
+          </a>
+        </div>
+      </div>` : ''}
+
+      <!-- API Key card -->
+      <div class="card">
+        <h3>Your API Key</h3>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+          Use this key to access the REST API and MCP server. Keep it secret.
+        </div>
+        <div class="api-key-row">
+          <div class="api-key-display" id="key-display">${escHtml(user.apiKey)}</div>
+          <button class="btn btn-secondary" onclick="revealKey()">Show</button>
+          <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
+          <button class="btn btn-danger" id="rotate-btn" onclick="rotateKey()">Rotate</button>
+          <span class="copy-feedback" id="copy-fb">Copied!</span>
+        </div>
+
+        <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px;font-size:12px">
+          <div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:4px">REST API header</div>
+            <code class="block" id="snippet-rest">X-Api-Key: ${escHtml(user.apiKey)}</code>
+          </div>
+          <div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:4px">Claude Code MCP (HTTP)</div>
+            <code class="block" id="snippet-mcp">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${escHtml(user.apiKey)}"</code>
+          </div>
+          <div>
+            <div style="font-weight:600;color:var(--text);margin-bottom:4px">Claude Desktop MCP (via mcp-remote)</div>
+            <code class="block" id="snippet-desktop">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${escHtml(user.apiKey)}"] } } }</code>
+          </div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--muted)">${user.tier === 'starter' ? '✓ Unlimited conversions' : rateLabel}</div>
-    </div>
+    `;
 
-    <!-- Top-up card -->
-    ${user.tier !== 'starter' ? `
-    <div class="card upgrade-card">
-      <h3>Top up credits</h3>
-      <p style="font-size:13px;color:var(--text);margin-bottom:16px">
-        Add any amount — credits never expire. ${rateLabel}.
-      </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="btn btn-secondary" onclick="topup(500)">$5 <span style="font-size:11px;color:var(--muted)">50 conv</span></button>
-        <button class="btn btn-secondary" onclick="topup(1000)">$10 <span style="font-size:11px;color:var(--muted)">100 conv</span></button>
-        <button class="btn btn-secondary" onclick="topup(2500)">$25 <span style="font-size:11px;color:var(--muted)">250 conv</span></button>
-        <button class="btn btn-upgrade" onclick="topup(10000)" id="topup-btn">$100 <span style="font-size:11px;opacity:0.8">1000 conv</span></button>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="custom-amount" type="number" min="5" max="1000" placeholder="Custom $amount"
-          style="width:140px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px">
-        <button class="btn btn-secondary" onclick="topupCustom()">Add credits</button>
-      </div>
-      <div style="margin-top:12px">
-        <a href="mailto:dinesh@kshetra.studio?subject=BPEL2Orkes Unlimited Plan" style="font-size:12px;color:var(--muted)">
-          Need unlimited conversions? Contact us about the Starter plan →
-        </a>
-      </div>
-    </div>` : ''}
+    let _fullKey = null;
 
-    <!-- API Key card -->
-    <div class="card">
-      <h3>Your API Key</h3>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-        Use this key to access the REST API and MCP server. Keep it secret.
-      </div>
-      <div class="api-key-row">
-        <div class="api-key-display" id="key-display">${escHtml(user.apiKey)}</div>
-        <button class="btn btn-secondary" onclick="revealKey()">Show</button>
-        <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
-        <button class="btn btn-secondary" id="rotate-btn" onclick="rotateKey()" style="color:var(--danger,#e53e3e)">Rotate</button>
-        <span class="copy-feedback" id="copy-fb">Copied!</span>
-      </div>
-      <div style="margin-top:14px;font-size:12px;color:var(--muted)">
-        <strong style="color:var(--text)">REST API:</strong>
-        <code id="snippet-rest" style="background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:11px">X-Api-Key: ${escHtml(user.apiKey)}</code><br><br>
-        <strong style="color:var(--text)">Claude Code MCP:</strong><br>
-        <code id="snippet-mcp" style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${escHtml(user.apiKey)}"</code><br>
-        <strong style="color:var(--text)">Claude Desktop MCP (via mcp-remote):</strong><br>
-        <code id="snippet-desktop" style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${escHtml(user.apiKey)}"] } } }</code>
-      </div>
-    </div>
-  `;
-
-  // Full key (fetched separately so we don't expose it in initial load)
-  let _fullKey = null;
-
-  function _updateKeyDisplay(key) {
-    document.getElementById('key-display').textContent = key;
-    document.getElementById('snippet-rest').textContent = `X-Api-Key: ${key}`;
-    document.getElementById('snippet-mcp').textContent = `claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${key}"`;
-    document.getElementById('snippet-desktop').textContent = `{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${key}"] } } }`;
-  }
-
-  window.revealKey = async () => {
-    if (!_fullKey) {
-      const r = await fetch('/api/v1/my-key', { credentials: 'include' });
-      const d = await r.json();
-      _fullKey = d.apiKey;
+    function _updateKeyDisplay(key) {
+      document.getElementById('key-display').textContent = key;
+      document.getElementById('snippet-rest').textContent = `X-Api-Key: ${key}`;
+      document.getElementById('snippet-mcp').textContent = `claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${key}"`;
+      document.getElementById('snippet-desktop').textContent = `{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${key}"] } } }`;
     }
-    _updateKeyDisplay(_fullKey);
-  };
 
-  window.copyKey = async () => {
-    if (!_fullKey) await window.revealKey();
-    await navigator.clipboard.writeText(_fullKey);
-    const fb = document.getElementById('copy-fb');
-    fb.classList.add('show');
-    setTimeout(() => fb.classList.remove('show'), 2000);
-  };
-
-  window.rotateKey = async () => {
-    if (!confirm('Rotate your API key? Your current key will stop working immediately — update any MCP configs or scripts before confirming.')) return;
-    const btn = document.getElementById('rotate-btn');
-    btn.disabled = true; btn.textContent = 'Rotating…';
-    try {
-      const r = await fetch('/api/v1/rotate-key', { method: 'POST', credentials: 'include' });
-      if (!r.ok) { alert('Rotation failed. Please try again.'); return; }
-      const d = await r.json();
-      _fullKey = d.apiKey;
+    window.revealKey = async () => {
+      if (!_fullKey) {
+        const r = await fetch('/api/v1/my-key', { credentials: 'include' });
+        const d = await r.json();
+        _fullKey = d.apiKey;
+      }
       _updateKeyDisplay(_fullKey);
-      btn.textContent = 'Rotated!';
-      setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
-    } catch (e) {
-      alert('Rotation failed. Please try again.');
-      btn.disabled = false; btn.textContent = 'Rotate';
-    }
-  };
+    };
 
-  window.topup = async (amount_cents) => {
-    const btn = document.getElementById('topup-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-    const r = await fetch('/api/v1/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount_cents }),
-      credentials: 'include',
-    });
-    const d = await r.json();
-    if (d.url) { window.location.href = d.url; return; }
-    if (btn) { btn.disabled = false; btn.textContent = `$${(amount_cents/100).toFixed(0)} — ${Math.floor(amount_cents/centsPerConv)} conv`; }
-    if (r.status === 503) {
-      alert("Payments aren't enabled yet — contact support to add credits manually for now.");
-    } else {
-      alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
-    }
-  };
+    window.copyKey = async () => {
+      if (!_fullKey) await window.revealKey();
+      await navigator.clipboard.writeText(_fullKey);
+      const fb = document.getElementById('copy-fb');
+      fb.classList.add('show');
+      setTimeout(() => fb.classList.remove('show'), 2000);
+    };
 
-  window.topupCustom = () => {
-    const input = document.getElementById('custom-amount');
-    const dollars = parseFloat(input.value);
-    if (!dollars || dollars < 5 || dollars > 1000) {
-      alert('Enter an amount between $5 and $1,000.');
-      return;
-    }
-    window.topup(Math.round(dollars * 100));
-  };
+    window.rotateKey = async () => {
+      if (!confirm('Rotate your API key? Your current key will stop working immediately — update any MCP configs or scripts before confirming.')) return;
+      const btn = document.getElementById('rotate-btn');
+      btn.disabled = true; btn.textContent = 'Rotating…';
+      try {
+        const r = await fetch('/api/v1/rotate-key', { method: 'POST', credentials: 'include' });
+        if (!r.ok) { alert('Rotation failed. Please try again.'); return; }
+        const d = await r.json();
+        _fullKey = d.apiKey;
+        _updateKeyDisplay(_fullKey);
+        btn.textContent = 'Rotated!';
+        setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
+      } catch (e) {
+        alert('Rotation failed. Please try again.');
+        btn.disabled = false; btn.textContent = 'Rotate';
+      }
+    };
+
+    window.topup = async (amount_cents) => {
+      const btn = document.getElementById('topup-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+      const r = await fetch('/api/v1/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount_cents }),
+        credentials: 'include',
+      });
+      const d = await r.json();
+      if (d.url) { window.location.href = d.url; return; }
+      if (btn) { btn.disabled = false; btn.textContent = `$${(amount_cents/100).toFixed(0)} — ${Math.floor(amount_cents/centsPerConv)} conv`; }
+      if (r.status === 503) {
+        alert("Payments aren't enabled yet — contact support to add credits manually.");
+      } else {
+        alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
+      }
+    };
+
+    window.topupCustom = () => {
+      const input = document.getElementById('custom-amount');
+      const dollars = parseFloat(input.value);
+      if (!dollars || dollars < 5 || dollars > 1000) {
+        alert('Enter an amount between $5 and $1,000.');
+        return;
+      }
+      window.topup(Math.round(dollars * 100));
+    };
 
   } catch(e) {
-    app.innerHTML = `<div style="color:#ef4444;padding:20px;font-family:monospace;font-size:13px">
-      <strong>Dashboard error (please share with support):</strong><br>${e}</div>`;
+    app.innerHTML = `<div style="color:var(--error);padding:20px;font-family:monospace;font-size:13px">
+      <strong>Dashboard error:</strong><br>${e}</div>`;
   }
 })();
 
