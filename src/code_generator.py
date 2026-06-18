@@ -21,35 +21,90 @@ from typing import Any
 _INTERNAL_FIELDS = {"_bpelSource", "_warning", "_metadata", "_bpelName"}
 
 
-# ── XPath → JS condition translator (literals only) ───────────────────────────
-# Handles the subset that appears in generated SWITCH tasks.
+# ── XPath → JS condition translator ───────────────────────────────────────────
+# Applied to SWITCH expressions, loop conditions, and inline branch conditions.
 
 _XPATH_REPLACEMENTS = [
-    # string equality:  $var/element = 'value'  →  $.var.element === 'value'
-    (re.compile(r"\$(\w+)/(\w+)\s*=\s*'([^']*)'"),
-     r"$.\\1.\\2 === '\\3'"),
-    # numeric equality: $var = 42  →  $.var === 42
-    (re.compile(r"\$(\w+)\s*=\s*(\d+)"),
-     r"$.\\1 === \\2"),
-    # boolean true/false()
-    (re.compile(r"\btrue\(\)"), "true"),
+    # bpel:getVariableData('var','part','/xpath') and getVariableData(...)
+    (re.compile(r"(?:bpel:)?getVariableData\('(\w+)'[^)]*\)"), r"$.\1"),
+
+    # ── Slash-notation: $var/part/element ─────────────────────────────────────
+    (re.compile(r"\$(\w+)/(\w+)/(\w+)\s*!=\s*'([^']*)'"), r"$.\1.\2.\3 !== '\4'"),
+    (re.compile(r"\$(\w+)/(\w+)/(\w+)\s*=\s*'([^']*)'"),  r"$.\1.\2.\3 === '\4'"),
+    (re.compile(r"\$(\w+)/(\w+)\s*!=\s*'([^']*)'"),        r"$.\1.\2 !== '\3'"),
+    (re.compile(r"\$(\w+)/(\w+)\s*=\s*'([^']*)'"),         r"$.\1.\2 === '\3'"),
+    (re.compile(r"\$(\w+)/(\w+)"),                          r"$.\1.\2"),
+
+    # ── Dot-notation: $var.prop ────────────────────────────────────────────────
+    (re.compile(r"\$(\w+)\.(\w+)\s*!=\s*'([^']*)'"),       r"$.\1.\2 !== '\3'"),
+    (re.compile(r"\$(\w+)\.(\w+)\s*=\s*'([^']*)'"),        r"$.\1.\2 === '\3'"),
+    (re.compile(r"\$(\w+)\.(\w+)\s*!=\s*(\d+(?:\.\d+)?)"), r"$.\1.\2 !== \3"),
+    (re.compile(r"\$(\w+)\.(\w+)\s*=\s*(\d+(?:\.\d+)?)"),  r"$.\1.\2 === \3"),
+    (re.compile(r"\$(\w+)\.(\w+)"),                         r"$.\1.\2"),
+
+    # ── Simple $var patterns ───────────────────────────────────────────────────
+    # $var = true() / false() — before generic true()/false() replacement
+    (re.compile(r"\$(\w+)\s*=\s*true\(\)"),  r"$.\1 === true"),
+    (re.compile(r"\$(\w+)\s*=\s*false\(\)"), r"$.\1 === false"),
+    (re.compile(r"\$(\w+)\s*!=\s*'([^']*)'"),       r"$.\1 !== '\2'"),
+    (re.compile(r"\$(\w+)\s*=\s*'([^']*)'"),        r"$.\1 === '\2'"),
+    (re.compile(r"\$(\w+)\s*!=\s*(\d+(?:\.\d+)?)"), r"$.\1 !== \2"),
+    (re.compile(r"\$(\w+)\s*=\s*(\d+(?:\.\d+)?)"),  r"$.\1 === \2"),
+    (re.compile(r"\$(\w+)"),                         r"$.\1"),
+
+    # ── XPath functions ────────────────────────────────────────────────────────
+    (re.compile(r"string-length\(\$\.?(\w+(?:\.\w+)*)\)"),     r"$.\1.length"),
+    (re.compile(r"starts-with\(\$\.?(\w+(?:\.\w+)*),\s*'([^']*)'\)"), r"$.\1.startsWith('\2')"),
+    (re.compile(r"contains\(\$\.?(\w+(?:\.\w+)*),\s*'([^']*)'\)"),    r"$.\1.includes('\2')"),
+    (re.compile(r"\btrue\(\)"),  "true"),
     (re.compile(r"\bfalse\(\)"), "false"),
-    # not()
-    (re.compile(r"not\(([^)]+)\)"), r"!(\1)"),
-    # and / or (XPath uses lowercase keywords, same as JS — no-op but normalise spacing)
+    (re.compile(r"\bnot\(([^)]+)\)"), r"!(\1)"),
+
+    # ── Logical operators ──────────────────────────────────────────────────────
     (re.compile(r"\s+and\s+"), " && "),
-    (re.compile(r"\s+or\s+"), " || "),
+    (re.compile(r"\s+or\s+"),  " || "),
 ]
 
 
 def _translate_condition(expr: str) -> str:
-    """
-    Best-effort translation of a BPEL/XPath condition string to a JS expression
-    suitable for Orkes SWITCH evaluatorType=javascript.
-    """
+    """Best-effort XPath → JS translation for Orkes SWITCH/DO_WHILE evaluators."""
     result = expr
     for pattern, repl in _XPATH_REPLACEMENTS:
         result = pattern.sub(repl, result)
+    return result
+
+
+def _build_switch_js(task: dict) -> dict:
+    """
+    Rebuild the SWITCH task `expression` as a proper JS function before
+    _bpelSource is stripped. Reads conditions and branchKeys from _bpelSource.
+    """
+    bpel_src = task.get("_bpelSource", {})
+    conditions = bpel_src.get("conditions", [])
+    branch_keys = bpel_src.get("branchKeys", [])
+
+    key_iter = iter(branch_keys)
+    branches: list[tuple[str, str]] = []
+    for cond in conditions:
+        if cond is not None:
+            try:
+                key = next(key_iter)
+                branches.append((cond, key))
+            except StopIteration:
+                break
+
+    if not branches:
+        return task
+
+    lines = ["function execute() {"]
+    for cond, key in branches:
+        js_cond = _translate_condition(cond)
+        lines.append(f'  if ({js_cond}) return "{key}";')
+    lines.append('  return "default";')
+    lines.append("}")
+
+    result = dict(task)
+    result["expression"] = "\n".join(lines)
     return result
 
 
@@ -57,12 +112,16 @@ def _translate_condition(expr: str) -> str:
 
 def _clean(obj: Any) -> Any:
     if isinstance(obj, dict):
+        # Rebuild SWITCH expression before stripping _bpelSource
+        if obj.get("type") == "SWITCH" and "_bpelSource" in obj:
+            obj = _build_switch_js(obj)
         cleaned = {}
         for k, v in obj.items():
             if k in _INTERNAL_FIELDS:
                 continue
-            # Translate condition strings on SWITCH decision cases
             if k == "expression" and isinstance(v, str):
+                cleaned[k] = _translate_condition(v)
+            elif k == "loopCondition" and isinstance(v, str):
                 cleaned[k] = _translate_condition(v)
             else:
                 cleaned[k] = _clean(v)

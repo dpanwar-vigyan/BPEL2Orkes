@@ -395,6 +395,22 @@ async def my_key(request: Request):
     return {"apiKey": user["apiKey"]}
 
 
+@app.post("/api/v1/rotate-key")
+async def rotate_key(request: Request):
+    """Rotate the signed-in user's API key. Old key is immediately invalidated."""
+    from oauth import get_session as _gs
+    from auth import get_user_by_id, rotate_api_key as _rotate
+
+    session = _gs(request)
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = get_user_by_id(session["userId"])
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    updated = _rotate(session["userId"])
+    return {"apiKey": updated["apiKey"]}
+
+
 @app.post("/api/v1/checkout")
 async def checkout(request: Request):
     """Create a Stripe Checkout session to top up conversion credits."""
