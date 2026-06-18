@@ -178,11 +178,11 @@
       </div>
       <div style="margin-top:14px;font-size:12px;color:var(--muted)">
         <strong style="color:var(--text)">REST API:</strong>
-        <code style="background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:11px">X-Api-Key: your_key</code><br><br>
+        <code id="snippet-rest" style="background:var(--code-bg);padding:1px 6px;border-radius:3px;font-size:11px">X-Api-Key: ${escHtml(user.apiKey)}</code><br><br>
         <strong style="color:var(--text)">Claude Code MCP:</strong><br>
-        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: your_key"</code><br>
+        <code id="snippet-mcp" style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${escHtml(user.apiKey)}"</code><br>
         <strong style="color:var(--text)">Claude Desktop MCP (via mcp-remote):</strong><br>
-        <code style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:your_key"] } } }</code>
+        <code id="snippet-desktop" style="background:var(--code-bg);padding:4px 8px;border-radius:3px;font-size:11px;display:block;margin-top:4px">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${escHtml(user.apiKey)}"] } } }</code>
       </div>
     </div>
   `;
@@ -190,13 +190,20 @@
   // Full key (fetched separately so we don't expose it in initial load)
   let _fullKey = null;
 
+  function _updateKeyDisplay(key) {
+    document.getElementById('key-display').textContent = key;
+    document.getElementById('snippet-rest').textContent = `X-Api-Key: ${key}`;
+    document.getElementById('snippet-mcp').textContent = `claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${key}"`;
+    document.getElementById('snippet-desktop').textContent = `{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${key}"] } } }`;
+  }
+
   window.revealKey = async () => {
     if (!_fullKey) {
       const r = await fetch('/api/v1/my-key', { credentials: 'include' });
       const d = await r.json();
       _fullKey = d.apiKey;
     }
-    document.getElementById('key-display').textContent = _fullKey;
+    _updateKeyDisplay(_fullKey);
   };
 
   window.copyKey = async () => {
@@ -216,7 +223,7 @@
       if (!r.ok) { alert('Rotation failed. Please try again.'); return; }
       const d = await r.json();
       _fullKey = d.apiKey;
-      document.getElementById('key-display').textContent = _fullKey;
+      _updateKeyDisplay(_fullKey);
       btn.textContent = 'Rotated!';
       setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
     } catch (e) {
