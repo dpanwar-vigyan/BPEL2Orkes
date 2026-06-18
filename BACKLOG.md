@@ -1,7 +1,7 @@
 # BPEL2Orkes — Product Backlog
 
 **Studio:** Kshetra Studio · [ktools.kshetra.studio](https://ktools.kshetra.studio)  
-**Updated:** 2026-06-16
+**Updated:** 2026-06-18
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
@@ -218,19 +218,19 @@ claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes
 |---|------|--------|-------|
 | AU-1 | ~~Google OAuth sign-in~~ | ~~🔲 V1.1~~ | Removed — GitHub-only, developer-focused tool. Google routes deleted from `oauth.py`. |
 | AU-2 | GitHub OAuth sign-in (`/auth/github`, `/auth/github/callback`) | 🟢 Done | Authlib + FastAPI |
-| AU-3 | User record in DynamoDB (`userId`, `email`, `provider`, `apiKey`, `tier`, `usageCount`) | 🔲 V1.1 | No RDS needed — single-table design |
-| AU-4 | Auto-issue free API key on first sign-in (`bpel2_free_` + random 16 chars) | 🔲 V1.1 | Stored hashed in DynamoDB |
-| AU-5 | `X-Api-Key` middleware — validate key, load user, check quota before convert endpoints | 🔲 V1.1 | 401 if missing/invalid, 429 if over quota |
-| AU-6 | Free tier: 3 lifetime conversions, no card required | 🔲 V1.1 | Counter increments on every `/convert` call |
-| AU-7 | Developer tier ($10 one-off): 30 credits, issued via Stripe Checkout | 🔲 V1.1 | Stripe webhook → update tier + credits in DynamoDB |
-| AU-8 | Starter tier ($49/mo): unlimited, contact form for now | 🔲 V1.1 | Manual fulfilment until volume justifies automation |
-| AU-9 | Dashboard page (`/dashboard`) — shows tier, credits used, API key, copy button | 🔲 V1.1 | Simple HTML page, no React needed |
-| AU-10 | "Upgrade" button in dashboard → Stripe Checkout → webhook → tier upgrade | 🔲 V1.1 | |
-| AU-11 | Web UI conversion gate — show "Sign in" prompt when no session, show usage count when signed in | 🔲 V1.1 | |
-| AU-12 | Session cookie (httponly, secure, 7-day expiry) | 🔲 V1.1 | JWT signed with server secret |
-| AU-13 | MCP `X-Api-Key` header threading — quota applied same as REST API | 🔲 V1.1 | Same middleware |
-| AU-14 | Stripe webhook endpoint (`POST /webhooks/stripe`) | 🔲 V1.1 | Verify signature, update DynamoDB on `checkout.session.completed` |
-| AU-15 | `/api/v1/me` endpoint — returns current user tier, usage, API key (masked) | 🔲 V1.1 | Used by dashboard and MCP tool |
+| AU-3 | User record in DynamoDB (`userId`, `email`, `provider`, `apiKey`, `tier`, `creditBalanceCents`) | 🟢 Done | Single-table design. `creditBalanceCents` stores balance as integer cents; `CENTS_PER_CONVERSION=10` ($0.10/conversion) |
+| AU-4 | Auto-issue free API key on first sign-in (`bpel2_free_` + random 16 chars) | 🟢 Done | 50 free conversions ($5 credit) on sign-up |
+| AU-5 | `X-Api-Key` middleware — validate key, load user, check quota before convert endpoints | 🟢 Done | 401 if missing/invalid, 429 if over quota. Session cookie fallback for web UI |
+| AU-6 | Free tier: 50 conversions ($5 credit) on sign-up, no card required | 🟢 Done | `FREE_CREDIT_CENTS=500` in `auth.py` |
+| AU-7 | Metered credit top-up via Stripe Checkout — any amount $5–$1000 | 🟢 Done | Dynamic `price_data` (no pre-created Stripe Products needed). Webhook → `add_credits()` → DynamoDB atomic update |
+| AU-8 | Starter tier (unlimited): manual `tier=starter` in DynamoDB | 🟢 Done | Bypasses quota entirely. Contact for enterprise pricing |
+| AU-9 | Dashboard page (`/dashboard`) — credit balance, top-up UI, API key display | 🟢 Done | Preset top-up buttons ($5/$10/$25/$100) + custom amount input |
+| AU-10 | Top-up flow → Stripe Checkout → webhook → credits added | 🟢 Done | Tested live with real $5 payment on production |
+| AU-11 | Web UI conversion gate — sign-in prompt when no session, conversions-remaining chip when signed in | 🟢 Done | Quota modal with "Top up credits" CTA on 429 |
+| AU-12 | Session cookie (httponly, secure, 7-day expiry) | 🟢 Done | `itsdangerous` URLSafeTimedSerializer |
+| AU-13 | MCP `X-Api-Key` header threading — quota applied same as REST API | 🟢 Done | `resolve_mcp_caller()` + `get_http_headers()` from FastMCP |
+| AU-14 | Stripe webhook endpoint (`POST /webhooks/stripe`) | 🟢 Done | Signature verified; `checkout.session.completed` → `add_credits()` |
+| AU-15 | `/api/v1/me` endpoint — returns `conversionsRemaining`, `creditBalanceCents`, `centsPerConversion`, masked API key | 🟢 Done | |
 | AU-16 | **API key rotation** — "Rotate Key" button in dashboard issues a new `bpel2_*` key and immediately invalidates the old one; one-click update shown for MCP config snippet | 🔲 Planned | Needed for: accidental key exposure, key sharing revocation, periodic security hygiene. New key inherits same tier/credits. Old key rejected with 401 + clear "key was rotated" message so users know to update their config rather than thinking auth is broken. |
 | AU-17 | **Session token recycling** — sliding-window refresh: reissue a new signed session cookie on each request if the current one is within 1 day of expiry (transparent to user). Force-invalidate all sessions on: API key rotation (AU-16), sign-out, suspected abuse. Graceful re-auth flow: expired session → redirect to sign-in with `?next=<original URL>` so user lands back where they were, not at `/`. | 🔲 Planned | Current behaviour: 7-day cookie just expires silently — user hits a 401 mid-session with no explanation. OAuth access tokens from Google/GitHub are short-lived (~1hr) and not currently refreshed either; add refresh-token storage + silent refresh before they expire. |
 
@@ -327,12 +327,13 @@ environment model.
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | CI-1 | GitHub Actions: run tests on every PR (`pytest tests/ -v`) | 🔲 Planned | Block merge if tests fail |
-| CI-2 | GitHub Actions: auto-deploy to staging on merge to `main` | 🔲 Planned | |
+| CI-2 | GitHub Actions: auto-deploy to staging on merge to `main` | 🟢 Done | `.github/workflows/deploy.yml` — OIDC auth, ARM64 Lambda image |
 | CI-3 | Smoke test suite for staging post-deploy (convert each sample file, assert 200 + non-empty bundle) | 🔲 Planned | Catches regressions before production gate |
-| CI-4 | GitHub Actions: production deploy behind manual approval gate | 🔲 Planned | Repo owner approval required — prevents accidental prod push |
-| CI-5 | Docker image tagged with git SHA + semver (`bpel2orkes:1.0.0`, `bpel2orkes:sha-abc123`) | 🔲 Planned | Enables precise rollback |
+| CI-4 | GitHub Actions: production deploy behind manual approval gate | 🟢 Done | `workflow_dispatch` + GitHub `production` environment with required reviewer |
+| CI-5 | Docker image tagged with git SHA (`bpel2orkes:staging-<sha>`, `bpel2orkes:prod-<sha>`) | 🟢 Done | |
 | CI-6 | Rollback runbook — re-run last successful production deploy job | 🔲 Planned | Target: < 2 min to rollback |
 | CI-7 | Dependabot for `lxml` and other dependencies | 🔲 Planned | |
+| CI-8 | Branch strategy: `develop` (default, Claude Code works here) → PR → `main` → auto-staging → manual prod | 🟢 Done | GitHub OIDC role `github-actions-bpel2orkes` scoped to this repo only |
 
 ### Monitoring
 
