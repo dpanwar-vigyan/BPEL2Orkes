@@ -1,0 +1,121 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]       # auto-deploy staging on merge to main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  id-token: write   # needed for OIDC
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_URI: 835422347653.dkr.ecr.ap-southeast-2.amazonaws.com/bpel2orkes
+  ROLE_ARN: arn:aws:iam::835422347653:role/github-actions-bpel2orkes
+
+jobs:
+  deploy-staging:
+    name: Deploy → staging
+    runs-on: ubuntu-latest
+    # Run on push to main, or manual trigger targeting staging
+    if: github.event_name == 'push' || inputs.environment == 'staging'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        run: |
+          TAG="${{ env.ECR_URI }}:staging-${{ github.sha }}"
+          docker buildx build \
+            --platform linux/arm64 \
+            -f Dockerfile.lambda \
+            --provenance=false --sbom=false \
+            -t "$TAG" \
+            -t "${{ env.ECR_URI }}:staging-latest" \
+            --push .
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Update Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name bpel2orkes-staging \
+            --image-uri "$IMAGE_TAG" \
+            --query "LastUpdateStatus" --output text
+          aws lambda wait function-updated \
+            --function-name bpel2orkes-staging
+
+      - name: Smoke test
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://staging.bpel2orkes.kshetra.studio/api/v1/health)
+          echo "Health: $STATUS"
+          [[ "$STATUS" == "200" ]] || exit 1
+
+  deploy-production:
+    name: Deploy → production
+    runs-on: ubuntu-latest
+    # Only on manual trigger targeting production
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    environment: production   # requires manual approval in GitHub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        run: |
+          TAG="${{ env.ECR_URI }}:prod-${{ github.sha }}"
+          docker buildx build \
+            --platform linux/arm64 \
+            -f Dockerfile.lambda \
+            --provenance=false --sbom=false \
+            -t "$TAG" \
+            -t "${{ env.ECR_URI }}:prod-latest" \
+            --push .
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Update Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name bpel2orkes-production \
+            --image-uri "$IMAGE_TAG" \
+            --query "LastUpdateStatus" --output text
+          aws lambda wait function-updated \
+            --function-name bpel2orkes-production
+
+      - name: Smoke test
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://bpel2orkes.kshetra.studio/api/v1/health)
+          echo "Health: $STATUS"
+          [[ "$STATUS" == "200" ]] || exit 1
