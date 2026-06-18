@@ -173,6 +173,7 @@
         <div class="api-key-display" id="key-display">${escHtml(user.apiKey)}</div>
         <button class="btn btn-secondary" onclick="revealKey()">Show</button>
         <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
+        <button class="btn btn-secondary" id="rotate-btn" onclick="rotateKey()" style="color:var(--danger,#e53e3e)">Rotate</button>
         <span class="copy-feedback" id="copy-fb">Copied!</span>
       </div>
       <div style="margin-top:14px;font-size:12px;color:var(--muted)">
@@ -204,6 +205,24 @@
     const fb = document.getElementById('copy-fb');
     fb.classList.add('show');
     setTimeout(() => fb.classList.remove('show'), 2000);
+  };
+
+  window.rotateKey = async () => {
+    if (!confirm('Rotate your API key? Your current key will stop working immediately — update any MCP configs or scripts before confirming.')) return;
+    const btn = document.getElementById('rotate-btn');
+    btn.disabled = true; btn.textContent = 'Rotating…';
+    try {
+      const r = await fetch('/api/v1/rotate-key', { method: 'POST', credentials: 'include' });
+      if (!r.ok) { alert('Rotation failed. Please try again.'); return; }
+      const d = await r.json();
+      _fullKey = d.apiKey;
+      document.getElementById('key-display').textContent = _fullKey;
+      btn.textContent = 'Rotated!';
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
+    } catch (e) {
+      alert('Rotation failed. Please try again.');
+      btn.disabled = false; btn.textContent = 'Rotate';
+    }
   };
 
   window.topup = async (amount_cents) => {

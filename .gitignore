@@ -11,3 +11,7 @@ build/
 .staging-alb-url
 cdk.context.json
 cdk.out/
+.DS_Store
+.claude/
+samples/*.json
+samples/*.html

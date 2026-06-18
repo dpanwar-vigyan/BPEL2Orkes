@@ -130,6 +130,21 @@ def deduct_credit(user_id: str) -> Optional[dict]:
     return resp["Attributes"]
 
 
+def rotate_api_key(user_id: str) -> dict:
+    """Issue a new API key and immediately invalidate the old one."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise ValueError(f"User {user_id} not found")
+    new_key = _new_api_key(user.get("tier", "free"))
+    resp = _table().update_item(
+        Key={"userId": user_id},
+        UpdateExpression="SET apiKey = :key",
+        ExpressionAttributeValues={":key": new_key},
+        ReturnValues="ALL_NEW",
+    )
+    return resp["Attributes"]
+
+
 def add_credits(user_id: str, amount_cents: int) -> dict:
     """Add purchased credits (from Stripe webhook). Upgrades tier to 'paid'."""
     resp = _table().update_item(

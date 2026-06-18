@@ -277,6 +277,7 @@ def _map_if(act: dict) -> list[dict]:
             "type": "if",
             "name": act.get("name"),
             "conditions": [b.get("condition") for b in branches],
+            "branchKeys": list(decision_cases.keys()),
         },
     }
     return [switch_task]
@@ -302,7 +303,7 @@ def _map_while(act: dict) -> list[dict]:
         "name": f"while_{_slug(act.get('name', ''))}",
         "taskReferenceName": ref,
         "type": "DO_WHILE",
-        "loopCondition": f"/* BPEL while: {act.get('condition', '')} */",
+        "loopCondition": act.get("condition", "true()"),
         "loopOver": body_tasks,
         "_bpelSource": {
             "type": "while",
@@ -322,7 +323,7 @@ def _map_repeat_until(act: dict) -> list[dict]:
         "taskReferenceName": ref,
         "type": "DO_WHILE",
         # repeatUntil runs first, then checks — invert condition for DO_WHILE
-        "loopCondition": f"/* BPEL repeatUntil (inverted): {act.get('condition', '')} */",
+        "loopCondition": f"!({act.get('condition', 'false()')})",
         "loopOver": body_tasks,
         "_bpelSource": {
             "type": "repeatUntil",
