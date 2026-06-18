@@ -1,7 +1,7 @@
 # BPEL2Orkes — Product Backlog
 
 **Studio:** Kshetra Studio · [ktools.kshetra.studio](https://ktools.kshetra.studio)  
-**Updated:** 2026-06-18
+**Updated:** 2026-06-19
 
 Items are grouped by pipeline stage and ordered by priority within each group.
 Status: 🟢 Done · 🔵 In Progress · 🔲 Planned · ⚠️ Blocked
@@ -242,9 +242,23 @@ claude mcp add --transport http --header "X-Api-Key: bpel2_free_xxxx" bpel2orkes
 | SW-2 | Sample selector — convert included bank samples without upload | 🟢 Done | `/samples/*.bpel` served as static files |
 | SW-3 | Side-by-side view: BPEL source ↔ Conductor JSON output | 🟢 Done | Tab switcher: Main Workflow / Sub-Workflows / Full Bundle |
 | SW-4 | Warnings panel — list of manual review items | 🟢 Done | Amber panel appears when warnings > 0 |
-| SW-5 | "Register on Orkes" button — one-click POST to Orkes Developer | 🟢 Done | Uses `/api/v1/validate` with customer API key |
+| SW-5 | "Deploy to Orkes" button — one-click POST to Orkes Developer | 🟢 Done | Uses `/api/v1/validate` with customer API key |
 | SW-6 | T&C gate on file upload — explicit consent checkbox before BPEL is submitted | 🔲 V1.1 | Legal requirement for public SaaS launch |
 | SW-7 | Move Web UI to S3 + CloudFront (separate from API) | 🔲 V2 | Better caching, CDN, custom error pages. Not needed until traffic justifies it |
+| SW-8 | **Landing page redesign** — full marketing page replacing current converter-first home: hero tagline ("Catapult your legacy BPEL into the AI era — try it free"), short demo video embed, feature highlights, GitHub sign-in CTA, then converter below the fold | 🔲 V1.1 | Current home drops users straight into the converter — no context for cold traffic |
+| SW-9 | **Branding refresh** — white background, KTools / BPEL2Orkes wordmark aligned to Kshetra visual identity; review font, colour palette, logo treatment | 🔲 V1.1 | Current dark theme is functional but not Kshetra-branded |
+
+---
+
+### Marketing & Discovery
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| MD-1 | **`llms.txt`** at `bpel2orkes.kshetra.studio/llms.txt` — AI/LLM-crawler-friendly plain-text product description, API summary, MCP tool list, and usage examples | 🔲 V1.1 | Emerging standard; lets AI assistants and agents discover and correctly describe the tool |
+| MD-2 | **`robots.txt`** on production — allow all crawlers on `bpel2orkes.kshetra.studio`; block staging | 🔲 V1.1 | Currently no robots.txt; staging should be noindex (INF-3) |
+| MD-3 | **OpenGraph + meta tags** on landing page — title, description, og:image for link previews in Slack/LinkedIn/X | 🔲 V1.1 | Zero social sharing metadata today |
+| MD-4 | **Public GitHub repo `kshetra-studio/bpel2orkes`** — interface-only public repo: README.md, llms.txt, api.md, LICENSE, CHANGELOG.md, mcp/README.md, examples/ — no source code | 🔲 Planned | Discovery surface for developers; source stays in private repo |
+| MD-5 | **Structured product description for MCP registry** — submit to Anthropic MCP registry and community registries once MD-4 is live | 🔲 Planned | Requires public repo (MD-4) and public MCP endpoint |
 
 ### SaaS — Orkes Demo Platform Integration
 
