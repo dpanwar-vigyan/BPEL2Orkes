@@ -27,7 +27,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import sys
@@ -107,6 +107,17 @@ if _SAMPLES_DIR.exists():
 # Note: trailing slash required — Claude Code CLI: claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/
 app.mount("/mcp", _mcp_asgi)
 app.include_router(oauth_router)
+
+
+@app.get("/.well-known/mcp/server-card.json", include_in_schema=False)
+def mcp_server_card():
+    """Publicly accessible MCP server card for Smithery and other MCP registries."""
+    card_path = _STATIC_DIR / ".well-known" / "mcp" / "server-card.json"
+    return Response(
+        content=card_path.read_bytes(),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
