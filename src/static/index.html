@@ -266,7 +266,7 @@
     <div class="validate-section" style="padding:0">
       <div style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;border-top:1px solid var(--border)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▼':'▲'">
         <svg style="width:14px;height:14px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <span style="font-size:12px;font-weight:500;flex:1">Register on Orkes Developer</span>
+        <span style="font-size:12px;font-weight:500;flex:1">Deploy to Orkes</span>
         <span style="font-size:10px;color:var(--muted)">▼</span>
       </div>
       <div style="display:none;padding:0 16px 12px">
@@ -282,7 +282,7 @@
         <span style="font-size:11px;color:var(--muted);flex:1">Orkes Console → Applications → your app → Key ID &amp; Key Secret. Change cluster URL for self-hosted or cloud deployments.</span>
         <button class="btn btn-success" id="validate-btn" disabled>
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Register on Orkes
+          Deploy to Orkes
         </button>
       </div>
       <div class="orkes-result" id="orkes-result"></div>
@@ -991,7 +991,7 @@ validateBtn.addEventListener('click', async () => {
   if (!xml) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ No BPEL input.'; return; }
 
   validateBtn.disabled = true;
-  validateBtn.innerHTML = '<span class="spinner"></span> Registering…';
+  validateBtn.innerHTML = '<span class="spinner"></span> Deploying…';
   orkesResult.textContent = '';
 
   try {
@@ -1020,7 +1020,7 @@ validateBtn.addEventListener('click', async () => {
     orkesResult.textContent = `✗ Request failed: ${e.message}`;
   } finally {
     validateBtn.disabled = false;
-    validateBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Register on Orkes';
+    validateBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Deploy to Orkes';
   }
 });
 </script>
