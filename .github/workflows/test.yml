@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest lxml
+        run: pip install pytest lxml fastapi httpx python-multipart itsdangerous python-dotenv fastmcp mangum boto3
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
