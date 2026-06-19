@@ -25,15 +25,62 @@
   "tools": [
     {
       "name": "convert_bpel",
-      "description": "Convert a WS-BPEL 2.0 XML process definition to Orkes Conductor workflow JSON. Returns the main workflow, sub-workflows, compensation flows, and migration warnings."
+      "description": "Convert a WS-BPEL 2.0 XML process definition to Orkes Conductor workflow JSON. Returns the main workflow, sub-workflows, compensation flows, and migration warnings.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["bpel_xml"],
+        "properties": {
+          "bpel_xml": {
+            "type": "string",
+            "description": "Raw BPEL XML string (WS-BPEL 2.0, including IBM BPELX extensions)"
+          }
+        }
+      }
     },
     {
       "name": "get_migration_tips",
-      "description": "Get migration tips and a complexity assessment for a BPEL process without running a full conversion. Returns a Mermaid flow diagram and summary of auto-converted vs manual tasks."
+      "description": "Given warnings from a convert_bpel call, return a structured migration guide explaining what each warning means and what the developer needs to do.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["workflow_name", "warnings"],
+        "properties": {
+          "workflow_name": {
+            "type": "string",
+            "description": "Name of the converted workflow"
+          },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of warning strings from convert_bpel output"
+          }
+        }
+      }
     },
     {
       "name": "validate_on_orkes",
-      "description": "Convert a BPEL process and register the resulting workflow directly on an Orkes Conductor instance using provided credentials."
+      "description": "Convert a BPEL process and register the resulting workflow directly on an Orkes Conductor instance using provided credentials.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["bpel_xml", "key_id", "key_secret"],
+        "properties": {
+          "bpel_xml": {
+            "type": "string",
+            "description": "Raw BPEL XML string"
+          },
+          "key_id": {
+            "type": "string",
+            "description": "Orkes Application Key ID (from Orkes Console → Applications)"
+          },
+          "key_secret": {
+            "type": "string",
+            "description": "Orkes Application Key Secret"
+          },
+          "orkes_base_url": {
+            "type": "string",
+            "description": "Base URL of your Orkes cluster (default: https://developer.orkescloud.com)"
+          }
+        }
+      }
     }
   ]
 }
