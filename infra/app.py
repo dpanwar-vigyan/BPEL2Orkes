@@ -320,6 +320,13 @@ class Bpel2OrkesServerless(Stack):
                                     name="SizeRestrictions_BODY",
                                     action_to_use=wafv2.CfnWebACL.RuleActionProperty(count={}),
                                 ),
+                                # SmitheryBot (and other MCP clients) send minimal User-Agent
+                                # strings that trigger this rule. MCP scanner IPs are not
+                                # adversarial; NoUserAgent_HEADER would block legitimate clients.
+                                wafv2.CfnWebACL.RuleActionOverrideProperty(
+                                    name="NoUserAgent_HEADER",
+                                    action_to_use=wafv2.CfnWebACL.RuleActionProperty(count={}),
+                                ),
                             ],
                         )
                     ),
