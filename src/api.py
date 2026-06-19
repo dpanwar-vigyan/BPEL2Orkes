@@ -71,14 +71,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://bpel2orkes.kshetra.studio",
-        "https://staging.bpel2orkes.kshetra.studio",
-        "https://askmybank.ai",
-        "http://localhost:3000",
-        "http://localhost:8000",
-    ],
-    allow_methods=["GET", "POST"],
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
