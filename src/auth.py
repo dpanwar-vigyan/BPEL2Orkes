@@ -205,11 +205,21 @@ def resolve_mcp_caller(api_key: Optional[str]) -> tuple[Optional[dict], Optional
 
     user = get_user_by_api_key(api_key)
     if not user:
-        return None, "Invalid API key."
+        key_hint = api_key[:8] + "…" if len(api_key) > 8 else api_key
+        return None, (
+            f"Authentication failed — API key '{key_hint}' not recognised. "
+            "If you recently rotated your key, update it in your MCP config and restart Claude. "
+            "Get your current key from https://bpel2orkes.kshetra.studio/dashboard → Developer tab."
+        )
 
     status = quota_status(user)
     if status:
-        return None, status["message"] + f" Top up at {status['topUpUrl']}"
+        remaining = status["conversionsRemaining"]
+        balance_dollars = status["creditBalanceCents"] / 100
+        return None, (
+            f"Out of conversion credits (balance: ${balance_dollars:.2f}, {remaining} conversions remaining). "
+            f"Top up at {status['topUpUrl']}"
+        )
 
     return user, None
 

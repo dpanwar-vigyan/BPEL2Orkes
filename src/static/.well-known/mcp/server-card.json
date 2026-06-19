@@ -17,7 +17,8 @@
         "type": "string",
         "title": "API Key",
         "description": "Your BPEL2Orkes API key. Sign in with GitHub at bpel2orkes.kshetra.studio for 50 free conversions.",
-        "x-sensitive": true
+        "x-sensitive": true,
+        "x-header": "X-Api-Key"
       }
     }
   },
