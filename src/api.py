@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import os
 import time
+import threading
 import httpx
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -62,8 +64,8 @@ app = FastAPI(
     title="BPEL2Orkes",
     description="Convert IBM BPEL processes to Orkes Conductor workflow JSON",
     version=VERSION,
-    docs_url="/docs" if ENV != "production" else None,
-    redoc_url="/redoc" if ENV != "production" else None,
+    docs_url=None,   # served at /api/docs via custom Swagger UI
+    redoc_url=None,
     lifespan=_lifespan,
 )
 
@@ -145,6 +147,81 @@ def converter(request: Request):
     return HTMLResponse(page.read_text(encoding="utf-8"))
 
 
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_spec():
+    """Public OpenAPI 3.0 spec — no authentication required."""
+    spec_path = _STATIC_DIR / "openapi.json"
+    return Response(
+        content=spec_path.read_bytes(),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=300", "Access-Control-Allow-Origin": "*"},
+    )
+
+
+_SWAGGER_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPEL2Orkes — API Reference</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+<style>
+  body { margin: 0; }
+  .topbar { display: none !important; }
+  .swagger-ui .info .title { font-size: 24px; }
+</style>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+SwaggerUIBundle({
+  url: '/openapi.json',
+  dom_id: '#swagger-ui',
+  presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+  layout: 'BaseLayout',
+  deepLinking: true,
+  tryItOutEnabled: true,
+  persistAuthorization: true,
+  requestInterceptor: (req) => { req.headers['X-Requested-With'] = 'SwaggerUI'; return req; },
+});
+</script>
+</body>
+</html>"""
+
+@app.get("/api/docs", response_class=HTMLResponse, include_in_schema=False)
+def api_docs():
+    """Interactive Swagger UI for the BPEL2Orkes API."""
+    return HTMLResponse(_SWAGGER_HTML)
+
+
+# ── IP rate limiting for public / optional-auth endpoints ─────────────────────
+_rl_lock = threading.Lock()
+_rl_hits: dict[str, list[float]] = defaultdict(list)
+
+_RL_LIMITS: dict[str, int] = {
+    "/api/v1/parse": 20,           # 20 req/min per IP — no auth, diagnostic only
+    "/api/v1/convert/diagram": 30, # 30 req/min per IP — optional auth, no credit cost
+}
+_RL_WINDOW = 60.0
+
+
+def _rl_check(ip: str, path: str) -> bool:
+    """Return True if allowed, False if rate-limited. Mutates _rl_hits in-place."""
+    limit = _RL_LIMITS.get(path)
+    if not limit:
+        return True
+    now = time.time()
+    key = f"{ip}:{path}"
+    with _rl_lock:
+        hits = _rl_hits[key]
+        hits[:] = [t for t in hits if now - t < _RL_WINDOW]
+        if len(hits) >= limit:
+            return False
+        hits.append(now)
+    return True
+
+
 # ── Request size guard ─────────────────────────────────────────────────────────
 
 @app.middleware("http")
@@ -155,6 +232,32 @@ async def limit_request_size(request: Request, call_next):
             status_code=413,
             content={"error": f"Request too large. Maximum BPEL size is {MAX_BPEL_BYTES // (1024*1024)} MB."},
         )
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def rate_limit_unauthenticated(request: Request, call_next):
+    """Per-IP sliding-window rate limit on public / optional-auth endpoints.
+    Authenticated requests (X-Api-Key present) are not rate-limited here —
+    the credit quota system handles per-user abuse on those paths."""
+    path = request.url.path
+    if path in _RL_LIMITS and not request.headers.get("x-api-key"):
+        ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else "unknown")
+        )
+        if not _rl_check(ip, path):
+            limit = _RL_LIMITS[path]
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": {
+                        "error": "rate_limited",
+                        "message": f"Too many requests. Limit is {limit} per minute per IP. Sign in with GitHub to get an API key and higher limits.",
+                        "signInUrl": "https://bpel2orkes.kshetra.studio/auth/github",
+                    }
+                },
+            )
     return await call_next(request)
 
 

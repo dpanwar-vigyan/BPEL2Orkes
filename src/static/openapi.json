@@ -1,0 +1,485 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "BPEL2Orkes API",
+    "description": "Convert IBM WS-BPEL 2.0 workflow definitions (WebSphere Process Server, BAW, IIB) to Orkes Conductor workflow JSON.\n\n## Authentication\n\nMost conversion endpoints require an API key passed in the `X-Api-Key` header.\n\nGet your key by signing in at [bpel2orkes.kshetra.studio](https://bpel2orkes.kshetra.studio) — 50 free conversions included, no credit card required.\n\n## Credits\n\n- Each call to `/api/v1/convert`, `/api/v1/convert/file`, or `/api/v1/validate` deducts one conversion credit.\n- `/api/v1/convert/clean`, `/api/v1/convert/diagram`, `/api/v1/parse`, and read endpoints do **not** deduct credits.\n- Credits never expire. Top up from your [dashboard](https://bpel2orkes.kshetra.studio/dashboard).\n\n## MCP Integration\n\nThis API is also available as a [Model Context Protocol](https://modelcontextprotocol.io) server at `/mcp/`.\nSee [github.com/kshetra-studio/bpel2orkes](https://github.com/kshetra-studio/bpel2orkes) for MCP setup instructions.",
+    "version": "0.2.0",
+    "contact": {
+      "name": "Kshetra Studio",
+      "email": "hello@kshetra.studio",
+      "url": "https://kshetra.studio"
+    },
+    "license": {
+      "name": "See LICENSE file",
+      "url": "https://github.com/kshetra-studio/bpel2orkes/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://bpel2orkes.kshetra.studio",
+      "description": "Production"
+    },
+    {
+      "url": "https://staging.bpel2orkes.kshetra.studio",
+      "description": "Staging"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local development"
+    }
+  ],
+  "security": [],
+  "tags": [
+    {
+      "name": "Conversion",
+      "description": "Convert BPEL XML to Orkes Conductor workflow JSON. Credit-deducting endpoints are marked."
+    },
+    {
+      "name": "Deployment",
+      "description": "Register converted workflows directly on an Orkes Conductor instance."
+    },
+    {
+      "name": "Diagnostics",
+      "description": "Parse and inspect BPEL without running the full conversion pipeline."
+    },
+    {
+      "name": "System",
+      "description": "Health, version, and metadata."
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key",
+        "description": "API key from your [dashboard](https://bpel2orkes.kshetra.studio/dashboard). Sign in with GitHub to get 50 free conversions."
+      }
+    },
+    "schemas": {
+      "ConversionBundle": {
+        "type": "object",
+        "description": "A complete Orkes Conductor workflow bundle produced from a BPEL process.",
+        "properties": {
+          "mainWorkflow": {
+            "$ref": "#/components/schemas/ConductorWorkflow"
+          },
+          "subWorkflows": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ConductorWorkflow" },
+            "description": "Extracted BPEL scopes and invoked sub-processes as separate Conductor workflows."
+          },
+          "compensationFlows": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ConductorWorkflow" },
+            "description": "BPEL compensation handlers extracted as standalone workflows."
+          },
+          "faultHandlerFlows": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ConductorWorkflow" },
+            "description": "BPEL fault handlers extracted as standalone workflows."
+          },
+          "warnings": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Migration warnings. Each item describes a construct that needs manual attention (e.g. SIMPLE tasks requiring a worker implementation, SOAP services, correlation sets)."
+          },
+          "workflowCount": {
+            "type": "integer",
+            "description": "Total number of Conductor workflows in the bundle (1 + sub + compensation + fault).",
+            "example": 3
+          }
+        }
+      },
+      "ConductorWorkflow": {
+        "type": "object",
+        "description": "An Orkes Conductor workflow definition, ready to register via PUT /api/metadata/workflow on your Orkes instance.",
+        "properties": {
+          "name": { "type": "string", "example": "LoanApprovalProcess" },
+          "version": { "type": "integer", "example": 1 },
+          "description": { "type": "string" },
+          "tasks": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "Conductor task definitions (HTTP, SWITCH, FORK_JOIN, DO_WHILE, SUB_WORKFLOW, SIMPLE, WAIT, etc.)"
+          },
+          "outputParameters": { "type": "object" },
+          "inputParameters": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "ConvertResponse": {
+        "type": "object",
+        "properties": {
+          "durationMs": { "type": "number", "description": "Server-side conversion time in milliseconds.", "example": 14.2 },
+          "warningCount": { "type": "integer", "description": "Number of migration warnings.", "example": 2 },
+          "workflowCount": { "type": "integer", "description": "Total workflows generated.", "example": 3 },
+          "bundle": { "$ref": "#/components/schemas/ConversionBundle" }
+        },
+        "required": ["durationMs", "warningCount", "workflowCount", "bundle"]
+      },
+      "ConvertCleanResponse": {
+        "type": "object",
+        "properties": {
+          "durationMs": { "type": "number", "example": 11.8 },
+          "warningCount": { "type": "integer", "example": 1 },
+          "workflowCount": { "type": "integer", "example": 2 },
+          "warnings": { "type": "array", "items": { "type": "string" } },
+          "mainWorkflow": { "$ref": "#/components/schemas/ConductorWorkflow" },
+          "subWorkflows": { "type": "array", "items": { "$ref": "#/components/schemas/ConductorWorkflow" } },
+          "compensationFlows": { "type": "array", "items": { "$ref": "#/components/schemas/ConductorWorkflow" } },
+          "faultHandlerFlows": { "type": "array", "items": { "$ref": "#/components/schemas/ConductorWorkflow" } }
+        }
+      },
+      "DiagramResponse": {
+        "type": "object",
+        "properties": {
+          "durationMs": { "type": "number", "example": 9.4 },
+          "mermaid": {
+            "type": "string",
+            "description": "Mermaid.js flowchart definition string. Render on the client with `mermaid.render()`.",
+            "example": "flowchart TD\n  start([Start]) --> task_1[HTTP: getCustomerData]\n  task_1 --> decision{SWITCH: creditCheck}\n  decision -->|branch_approved| task_2[HTTP: approveLoan]\n  decision -->|default| task_3[SIMPLE: manualReview]\n"
+          },
+          "summary": {
+            "type": "object",
+            "description": "Migration complexity summary.",
+            "properties": {
+              "total":          { "type": "integer", "description": "Total tasks in the main workflow." },
+              "autoConverted":  { "type": "integer", "description": "Tasks fully converted automatically." },
+              "needsWork":      { "type": "integer", "description": "Tasks requiring manual implementation (SIMPLE workers, WAIT callbacks, etc.)." },
+              "subWorkflows":   { "type": "integer", "description": "Number of extracted sub-workflows." },
+              "warningCount":   { "type": "integer" }
+            }
+          },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "ValidateResponse": {
+        "type": "object",
+        "properties": {
+          "durationMs":    { "type": "number", "example": 340.1 },
+          "warningCount":  { "type": "integer", "example": 1 },
+          "workflowCount": { "type": "integer", "example": 2 },
+          "orkesStatus":   { "type": "integer", "description": "HTTP status code returned by the Orkes PUT /api/metadata/workflow call.", "example": 200 },
+          "orkesOk":       { "type": "boolean", "description": "true if Orkes accepted the workflow (2xx response).", "example": true },
+          "orkesResponse": { "type": "string", "nullable": true, "description": "First 2000 chars of the Orkes response body when orkesOk is false. null on success." },
+          "workflowName":  { "type": "string", "description": "Name of the registered workflow.", "example": "LoanApprovalProcess" },
+          "bundle":        { "$ref": "#/components/schemas/ConversionBundle" }
+        }
+      },
+      "ParseResponse": {
+        "type": "object",
+        "properties": {
+          "durationMs": { "type": "number", "example": 3.1 },
+          "ast": {
+            "type": "object",
+            "description": "Internal AST produced by the BPEL parser. Structure reflects the BPEL process element tree. Useful for debugging; not guaranteed stable across versions."
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status":  { "type": "string", "example": "ok" },
+          "env":     { "type": "string", "example": "production", "enum": ["production", "staging", "local"] },
+          "version": { "type": "string", "example": "0.2.0" }
+        }
+      },
+      "VersionResponse": {
+        "type": "object",
+        "properties": {
+          "version":               { "type": "string", "example": "0.2.0" },
+          "env":                   { "type": "string", "example": "production" },
+          "supportedBpelVersions": { "type": "array", "items": { "type": "string" }, "example": ["2.0"] },
+          "supportedExtensions":   { "type": "array", "items": { "type": "string" }, "example": ["IBM BPELX 6.0.0"] }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "properties": {
+                  "error":   { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "QuotaError": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "object",
+            "properties": {
+              "error":                { "type": "string", "example": "quota_exceeded" },
+              "message":              { "type": "string", "example": "You've run out of conversion credits. Top up to continue." },
+              "creditBalanceCents":   { "type": "integer", "example": 0 },
+              "conversionsRemaining": { "type": "integer", "example": 0 },
+              "topUpUrl":             { "type": "string", "example": "https://bpel2orkes.kshetra.studio/dashboard" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid API key.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorDetail" } } }
+      },
+      "QuotaExceeded": {
+        "description": "Conversion credit balance exhausted.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QuotaError" } } }
+      },
+      "InvalidBpel": {
+        "description": "Request body is not valid BPEL XML.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorDetail" } } }
+      },
+      "TooLarge": {
+        "description": "BPEL file exceeds the 5 MB size limit.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorDetail" } } }
+      },
+      "ServerError": {
+        "description": "Unexpected server-side error.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorDetail" } } }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check",
+        "description": "Liveness probe. Returns `ok` and the current environment. Safe to poll.",
+        "operationId": "health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is healthy.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/version": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Version info",
+        "description": "Returns the API version, environment, and supported BPEL versions and extensions.",
+        "operationId": "version",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Version metadata.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VersionResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/convert": {
+      "post": {
+        "tags": ["Conversion"],
+        "summary": "Convert BPEL to Conductor bundle",
+        "description": "Parse a WS-BPEL 2.0 XML process and produce a complete Orkes Conductor workflow bundle containing the main workflow, extracted sub-workflows, compensation flows, and fault handler flows.\n\n**Deducts one conversion credit.**\n\nSend raw BPEL XML as the request body with `Content-Type: application/xml`.",
+        "operationId": "convert",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/xml": {
+              "schema": { "type": "string" },
+              "example": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<process name=\"LoanApprovalProcess\"\n  targetNamespace=\"http://example.com/loan\"\n  xmlns=\"http://docs.oasis-open.org/wsbpel/2.0/process/executable\">\n  <!-- BPEL process definition -->\n</process>"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion successful.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConvertResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "429": { "$ref": "#/components/responses/QuotaExceeded" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/convert/file": {
+      "post": {
+        "tags": ["Conversion"],
+        "summary": "Convert BPEL file upload",
+        "description": "Same as `/api/v1/convert` but accepts a multipart file upload. Useful when calling from scripts or CI pipelines that have the BPEL on disk.\n\n**Deducts one conversion credit.**",
+        "operationId": "convertFile",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "BPEL XML file (.bpel or .xml). Maximum 5 MB."
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion successful.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ConvertResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "filename": { "type": "string", "description": "Original uploaded filename.", "example": "loan_approval.bpel" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "429": { "$ref": "#/components/responses/QuotaExceeded" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/convert/clean": {
+      "post": {
+        "tags": ["Conversion"],
+        "summary": "Convert BPEL — flat response",
+        "description": "Same conversion as `/api/v1/convert` but returns a flattened response with the main workflow and sub-workflows at the top level rather than nested under `bundle`. Convenient for scripts that only need to iterate workflows.\n\n**Does not deduct credits.**\n\nAuthentication is optional; pass your API key to avoid browser session requirements.",
+        "operationId": "convertClean",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/xml": { "schema": { "type": "string" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion successful.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConvertCleanResponse" } } }
+          },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/convert/diagram": {
+      "post": {
+        "tags": ["Conversion"],
+        "summary": "Convert BPEL — flow diagram + summary",
+        "description": "Converts BPEL and returns a Mermaid.js flowchart string and a migration complexity summary (auto-converted vs needs-work task counts). Useful for building migration dashboards or previewing a workflow before full conversion.\n\n**Does not deduct credits.**\n\nAuthentication is optional.",
+        "operationId": "convertDiagram",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/xml": { "schema": { "type": "string" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Diagram and summary generated.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DiagramResponse" } } }
+          },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/validate": {
+      "post": {
+        "tags": ["Deployment"],
+        "summary": "Convert and deploy to Orkes",
+        "description": "Converts the BPEL, exchanges your Orkes Application Key ID and Key Secret for a short-lived JWT, then registers the main workflow on your Orkes Conductor instance via `PUT /api/metadata/workflow`.\n\nThe workflow is **registered but not started** — you start it separately via the Orkes UI or `POST /api/workflow/{workflowName}`.\n\n**Deducts one conversion credit.**",
+        "operationId": "validateOnOrkes",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "X-Orkes-Key-Id",
+            "in": "header",
+            "required": true,
+            "description": "Orkes Application Key ID. Create one in Orkes Console → Applications.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "X-Orkes-Key-Secret",
+            "in": "header",
+            "required": true,
+            "description": "Orkes Application Key Secret.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "X-Orkes-Base-Url",
+            "in": "header",
+            "required": false,
+            "description": "Base URL of your Orkes Conductor cluster. Defaults to `https://developer.orkescloud.com`.",
+            "schema": { "type": "string", "example": "https://developer.orkescloud.com" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/xml": { "schema": { "type": "string" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Conversion completed and registration attempted. Check `orkesOk` to confirm Orkes accepted it.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidateResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "429": { "$ref": "#/components/responses/QuotaExceeded" },
+          "502": {
+            "description": "Could not reach the Orkes cluster or token exchange failed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorDetail" } } }
+          },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/api/v1/parse": {
+      "post": {
+        "tags": ["Diagnostics"],
+        "summary": "Parse BPEL — AST only",
+        "description": "Runs the BPEL parser and returns the internal AST without running the pattern mapper or code generator. Useful for debugging parse failures or inspecting how BPEL constructs are represented internally.\n\n**No authentication required. Does not deduct credits.**\n\nThe AST structure is not guaranteed stable across API versions.",
+        "operationId": "parse",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/xml": { "schema": { "type": "string" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Parse successful.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ParseResponse" } } }
+          },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "422": { "$ref": "#/components/responses/InvalidBpel" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  }
+}
