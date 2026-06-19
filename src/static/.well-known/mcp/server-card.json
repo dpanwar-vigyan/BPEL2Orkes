@@ -1,65 +1,38 @@
 {
-  "name": "bpel2orkes",
-  "description": "Convert IBM WS-BPEL 2.0 workflows to Orkes Conductor automatically. Migrate IBM BPM, WebSphere Process Server, and TIBCO BPEL processes to deployment-ready Orkes Conductor JSON in minutes instead of weeks.",
-  "version": "1.0.0",
-  "author": "Kshetra",
+  "qualifiedName": "dinesh-s-panwar/bpel2orkes",
+  "displayName": "BPEL2Orkes",
+  "description": "Convert IBM WS-BPEL 2.0 processes to Orkes Conductor workflow JSON automatically.",
+  "iconUrl": "https://bpel2orkes.kshetra.studio/favicon.ico",
   "homepage": "https://bpel2orkes.kshetra.studio",
-  "license": "SEE LICENSE FILE",
-  "authentication": {
-    "type": "header",
-    "header": "X-Api-Key",
-    "description": "API key from bpel2orkes.kshetra.studio. Sign in with GitHub - 50 free conversions included."
+  "remote": {
+    "url": "https://bpel2orkes.kshetra.studio/mcp/",
+    "transport": "streamable-http"
+  },
+  "configSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["apiKey"],
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "title": "API Key",
+        "description": "Your BPEL2Orkes API key. Sign in with GitHub at bpel2orkes.kshetra.studio for 50 free conversions.",
+        "x-sensitive": true
+      }
+    }
   },
   "tools": [
     {
       "name": "convert_bpel",
-      "description": "Convert an IBM WS-BPEL 2.0 XML process definition to Orkes Conductor workflow JSON. Returns deployment-ready workflow JSON, a migration complexity assessment (green/amber/red), and a link to a visual flow diagram.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "bpel_xml": {
-            "type": "string",
-            "description": "IBM WS-BPEL 2.0 XML process definition as a string"
-          }
-        },
-        "required": ["bpel_xml"]
-      }
+      "description": "Convert a WS-BPEL 2.0 XML process definition to Orkes Conductor workflow JSON. Returns the main workflow, sub-workflows, compensation flows, and migration warnings."
     },
     {
       "name": "get_migration_tips",
-      "description": "Given the warnings from a conversion, return a structured migration guide with recommended actions for each flagged construct.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "assessment": {
-            "type": "object",
-            "description": "The assessment object returned from convert_bpel"
-          }
-        },
-        "required": ["assessment"]
-      }
+      "description": "Get migration tips and a complexity assessment for a BPEL process without running a full conversion. Returns a Mermaid flow diagram and summary of auto-converted vs manual tasks."
     },
     {
       "name": "validate_on_orkes",
-      "description": "Convert BPEL XML and register the main workflow on an Orkes Conductor instance for immediate testing.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "bpel_xml": {
-            "type": "string",
-            "description": "IBM WS-BPEL 2.0 XML process definition"
-          },
-          "orkes_url": {
-            "type": "string",
-            "description": "Your Orkes Conductor instance URL"
-          },
-          "orkes_key": {
-            "type": "string",
-            "description": "Your Orkes Conductor API key"
-          }
-        },
-        "required": ["bpel_xml", "orkes_url", "orkes_key"]
-      }
+      "description": "Convert a BPEL process and register the resulting workflow directly on an Orkes Conductor instance using provided credentials."
     }
   ]
 }
