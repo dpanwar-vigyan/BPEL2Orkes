@@ -132,8 +132,16 @@ def ui():
 def dashboard(request: Request):
     session = get_session(request)
     if not session:
-        return RedirectResponse("/auth/google")
+        return RedirectResponse("/auth/github")
     page = _STATIC_DIR / "dashboard.html"
+    return HTMLResponse(page.read_text(encoding="utf-8"))
+
+
+@app.get("/convert", response_class=HTMLResponse, include_in_schema=False)
+def converter(request: Request):
+    page = _STATIC_DIR / "convert.html"
+    if not page.exists():
+        return RedirectResponse("/")
     return HTMLResponse(page.read_text(encoding="utf-8"))
 
 

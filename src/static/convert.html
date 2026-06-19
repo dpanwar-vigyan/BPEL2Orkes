@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BPEL2Orkes — Converter</title>
+<style>
+  :root {
+    --bg:           #ffffff;
+    --surface:      #f8fafc;
+    --surface2:     #f1f5f9;
+    --border:       #e2e8f0;
+    --accent:       #6c63ff;
+    --accent-hover: #5a52e8;
+    --accent-light: #ede9ff;
+    --success:      #16a34a;
+    --success-bg:   #f0fdf4;
+    --warn:         #d97706;
+    --error:        #dc2626;
+    --text:         #1e293b;
+    --muted:        #64748b;
+    --code-bg:      #f1f5f9;
+    --code-text:    #334155;
+    --shadow:       0 1px 3px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.05);
+    --shadow-lg:    0 4px 24px rgba(108,99,255,.12), 0 1px 4px rgba(0,0,0,.08);
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  header {
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 52px;
+    flex-shrink: 0;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; transition: color .12s, border-color .12s; }
+  .back-link:hover { color: var(--accent); border-color: var(--accent); }
+  .wordmark { display: flex; flex-direction: column; gap: 1px; text-decoration: none; }
+  .wordmark-main { font-size: 15px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); line-height: 1; }
+  .wordmark-main span { color: var(--accent); }
+  .wordmark-sub  { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: 0.8px; text-transform: uppercase; }
+  .env-badge { background: #fef3c7; color: #92400e; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px; display: none; }
+  .header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .user-chip { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px 4px 4px; font-size: 12px; color: var(--text); text-decoration: none; font-weight: 500; }
+  .user-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .credits-pill { background: #dcfce7; color: #166534; font-size: 10px; font-weight: 600; border-radius: 8px; padding: 1px 7px; }
+  .credits-pill.low { background: #fef9c3; color: #854d0e; }
+  .signin-btn { background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: background .12s; }
+  .signin-btn:hover { background: var(--accent-hover); }
+
+  /* ── Main split layout ── */
+  .main { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+  .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; min-height: 0; }
+  .panel:last-child { border-right: none; }
+  .panel-header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 9px 14px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .panel-header h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.9px; color: var(--muted); }
+  .panel-body { flex: 1; overflow: auto; min-height: 0; }
+
+  /* ── Toolbar ── */
+  .toolbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 7px; align-items: center; flex-shrink: 0; }
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: background .12s; font-family: var(--font); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--surface2); border-color: #c7d2fe; }
+  .btn-success { background: #166534; color: #bbf7d0; border: 1px solid #16a34a; }
+  .btn-success:hover { background: #15803d; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-icon { width: 14px; height: 14px; }
+
+  /* ── Drop zone ── */
+  #drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 28px; margin: 14px; text-align: center; color: var(--muted); cursor: pointer; transition: border-color .15s, background .15s; background: var(--surface); }
+  #drop-zone:hover, #drop-zone.drag-over { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+  #drop-zone p { margin-top: 6px; font-size: 12px; }
+  #drop-zone .icon { font-size: 28px; }
+
+  /* ── Textarea ── */
+  textarea { width: 100%; height: 100%; background: #fff; color: var(--code-text); font-family: var(--mono); font-size: 12px; line-height: 1.6; border: none; outline: none; resize: none; padding: 14px; tab-size: 2; }
+
+  /* ── Output ── */
+  pre { background: var(--code-bg); font-family: var(--mono); font-size: 12px; line-height: 1.6; padding: 14px; overflow: auto; height: 100%; color: var(--code-text); }
+  pre code { white-space: pre; }
+
+  /* ── Status bar ── */
+  .statusbar { background: var(--surface); border-top: 1px solid var(--border); padding: 5px 14px; font-size: 11px; color: var(--muted); display: flex; gap: 14px; align-items: center; flex-shrink: 0; height: 28px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); display: inline-block; }
+  .status-dot.ok  { background: var(--success); }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.err  { background: var(--error); }
+
+  /* ── Warnings ── */
+  .warnings { background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px; margin: 6px 14px; font-size: 12px; color: #78350f; flex-shrink: 0; }
+  .warnings-header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; user-select: none; }
+  .warnings-header h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--warn); flex: 1; margin: 0; }
+  .warnings-toggle { font-size: 10px; color: var(--muted); }
+  .warnings-body { padding: 0 12px 8px; display: none; }
+  .warnings-body.open { display: block; }
+  .warnings-body ul { padding-left: 14px; }
+  .warnings-body li { margin-bottom: 4px; line-height: 1.5; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .tab { padding: 8px 14px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: color .12s; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+
+  /* ── Orkes deploy ── */
+  .deploy-wrap { border-top: 1px solid var(--border); flex-shrink: 0; }
+  .deploy-toggle { padding: 7px 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+  .deploy-toggle:hover { background: var(--surface); }
+  .deploy-toggle span { font-size: 12px; font-weight: 600; flex: 1; color: var(--text); }
+  .deploy-body { padding: 0 14px 10px; }
+  .input-row { display: flex; gap: 7px; margin-bottom: 6px; }
+  .input-row input { flex: 1; background: #fff; border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 12px; padding: 6px 9px; outline: none; font-family: var(--mono); }
+  .input-row input:focus { border-color: var(--accent); }
+  .input-row input::placeholder { color: var(--muted); }
+  .orkes-result { margin-top: 7px; font-size: 12px; }
+  .orkes-result.success { color: var(--success); }
+  .orkes-result.error { color: var(--error); }
+
+  /* ── Deploy locked overlay ── */
+  .deploy-locked { position: relative; }
+  .deploy-locked > div { pointer-events: none; }
+  .deploy-lock-overlay { position: absolute; inset: 0; background: rgba(248,250,252,.82); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 600; border-top: 1px solid var(--border); cursor: pointer; }
+  .deploy-lock-overlay:hover { color: var(--accent); }
+
+  /* ── Summary bar ── */
+  .summary-bar { display:flex; gap:14px; padding:8px 14px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+  .summary-stat { display:flex; flex-direction:column; align-items:center; gap:1px; }
+  .summary-stat .num { font-size:18px; font-weight:700; line-height:1; }
+  .summary-stat .lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .num-green { color: var(--success); }
+  .num-amber { color: var(--warn); }
+  .num-blue  { color: var(--accent); }
+  .num-white { color: var(--text); }
+
+  /* ── Diagram ── */
+  .diagram-wrap { flex:1; overflow:auto; padding:16px; display:flex; justify-content:center; background: #fff; }
+  .diagram-wrap svg { max-width:100%; height:auto; }
+
+  /* ── Teaser overlay ── */
+  .output-locked { position: relative; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .output-locked pre, .output-locked .diagram-wrap { filter: blur(5px); pointer-events: none; user-select: none; }
+  .teaser-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; z-index: 10; background: linear-gradient(to bottom, rgba(255,255,255,.35) 0%, rgba(255,255,255,.75) 60%, rgba(255,255,255,.95) 100%); }
+  .teaser-lock { font-size: 30px; }
+  .teaser-msg { font-size: 15px; font-weight: 700; color: var(--text); text-align: center; line-height: 1.4; }
+  .teaser-sub { font-size: 12px; color: var(--muted); text-align: center; }
+  .teaser-cta { display: inline-flex; align-items: center; gap: 8px; background: var(--accent); color: #fff; border: none; border-radius: 9px; padding: 10px 20px; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; transition: background .12s; box-shadow: 0 4px 14px rgba(108,99,255,.25); }
+  .teaser-cta:hover { background: var(--accent-hover); }
+
+  /* ── Empty state ── */
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); gap: 10px; }
+  .empty-state .icon { font-size: 34px; opacity: 0.2; }
+
+  /* ── Auth / Quota modals ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15,17,27,.55); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 32px; max-width: 360px; width: 90%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+  .modal h2 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+  .modal p { color: var(--muted); font-size: 13px; line-height: 1.7; margin-bottom: 22px; }
+  .oauth-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 10px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; margin-bottom: 10px; transition: background .12s, border-color .12s; }
+  .oauth-btn:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+  .modal-close { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; margin-top: 4px; }
+
+  /* ── Spinner ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width: 13px; height: 13px; border: 2px solid rgba(108,99,255,.25); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 800px) {
+    .main { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
+    .panel { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <a class="back-link" href="/dashboard">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Dashboard
+  </a>
+  <a class="wordmark" href="/">
+    <span class="wordmark-main">BPEL<span>2</span>Orkes</span>
+    <span class="wordmark-sub">KTools · Kshetra Studio</span>
+  </a>
+  <span class="env-badge" id="env-badge">STAGING</span>
+  <div class="header-right" id="auth-area"></div>
+</header>
+
+<!-- ── Converter ── -->
+<div class="main">
+
+  <!-- LEFT: Input -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>BPEL Input</h2>
+    </div>
+
+    <div class="toolbar">
+      <label class="btn btn-secondary" for="file-input">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload .bpel
+        <input type="file" id="file-input" accept=".bpel,.xml" style="display:none">
+      </label>
+
+      <select id="sample-select" class="btn btn-secondary" style="cursor:pointer">
+        <option value="">Load sample…</option>
+        <option value="loan_approval">Loan Approval</option>
+        <option value="income_verification">Income Verification</option>
+        <option value="communications_orchestration">Communications Orchestration</option>
+        <option value="credit_card_provisioning">Credit Card Provisioning</option>
+      </select>
+
+      <button class="btn btn-secondary" id="clear-btn">Clear</button>
+
+      <button class="btn btn-primary" id="convert-btn">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+        Convert
+      </button>
+    </div>
+
+    <div id="drop-zone">
+      <div class="icon">📄</div>
+      <strong>Drop .bpel file here</strong>
+      <p>or upload above, or load a sample</p>
+    </div>
+
+    <div class="panel-body" style="display:none" id="editor-wrapper">
+      <textarea id="bpel-input" spellcheck="false" placeholder="Paste BPEL XML here…"></textarea>
+    </div>
+
+    <div class="statusbar">
+      <span class="status-dot" id="input-dot"></span>
+      <span id="input-status">No input</span>
+    </div>
+  </div>
+
+  <!-- RIGHT: Output -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Conductor Output</h2>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="diagram">Flow Diagram</div>
+      <div class="tab" data-tab="main">Main Workflow</div>
+      <div class="tab" data-tab="subs">Sub-Workflows</div>
+      <div class="tab" data-tab="full">Full Bundle</div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn btn-secondary" id="copy-btn" disabled>
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy JSON
+      </button>
+      <button class="btn btn-secondary" id="download-btn" disabled>
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </button>
+      <button class="btn btn-secondary" id="report-btn" disabled>
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Export Report
+      </button>
+      <span style="flex:1"></span>
+      <span id="wf-count" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+
+    <div class="summary-bar" id="summary-bar" style="display:none">
+      <div class="summary-stat"><span class="num num-white" id="sum-total">0</span><span class="lbl">Tasks</span></div>
+      <div class="summary-stat"><span class="num num-green" id="sum-auto">0</span><span class="lbl">Auto-converted</span></div>
+      <div class="summary-stat"><span class="num num-amber" id="sum-work">0</span><span class="lbl">Needs Work</span></div>
+      <div class="summary-stat"><span class="num num-blue" id="sum-sub">0</span><span class="lbl">Sub-Workflows</span></div>
+      <div class="summary-stat"><span class="num num-amber" id="sum-warn">0</span><span class="lbl">Warnings</span></div>
+    </div>
+
+    <div id="warnings-container"></div>
+
+    <div class="panel-body">
+      <div class="empty-state" id="empty-output">
+        <div class="icon">⚡</div>
+        <span>Convert a BPEL file to see output</span>
+      </div>
+      <div class="diagram-wrap" id="diagram-panel" style="display:none">
+        <div id="mermaid-diagram"></div>
+      </div>
+      <pre id="output-pre" style="display:none"><code id="output-code"></code></pre>
+    </div>
+
+    <!-- Deploy to Orkes -->
+    <div class="deploy-wrap deploy-locked" id="deploy-section">
+      <div class="deploy-toggle" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.deploy-arrow').textContent=this.nextElementSibling.style.display==='none'?'▼':'▲'">
+        <svg style="width:13px;height:13px;flex-shrink:0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <span>Deploy to Orkes</span>
+        <span class="deploy-arrow" style="font-size:10px;color:var(--muted)">▼</span>
+      </div>
+      <div style="display:none" class="deploy-body">
+        <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Cluster URL and Application credentials</label>
+        <div class="input-row">
+          <input type="text" id="orkes-base-url" placeholder="Orkes cluster URL" value="https://developer.orkescloud.com" autocomplete="off" style="flex:2">
+        </div>
+        <div class="input-row">
+          <input type="text" id="orkes-key-id" placeholder="Key ID" autocomplete="off">
+          <input type="password" id="orkes-key-secret" placeholder="Key Secret">
+        </div>
+        <div class="input-row">
+          <span style="font-size:11px;color:var(--muted);flex:1">Orkes Console → Applications → your app → Key ID &amp; Key Secret.</span>
+          <button class="btn btn-success" id="validate-btn" disabled>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Deploy to Orkes
+          </button>
+        </div>
+        <div class="orkes-result" id="orkes-result"></div>
+      </div>
+      <div class="deploy-lock-overlay" id="deploy-lock" onclick="showAuthModal()">
+        🔒 Sign in to deploy to Orkes
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <span class="status-dot" id="output-dot"></span>
+      <span id="output-status">Ready</span>
+      <span id="duration" style="margin-left:auto"></span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Auth modal -->
+<div class="modal-overlay" id="auth-modal" style="display:none">
+  <div class="modal">
+    <h2>Sign in to Convert</h2>
+    <p>Get 50 free conversions — no credit card needed.<br>Sign in with GitHub takes 10 seconds.</p>
+    <a class="oauth-btn" href="/auth/github">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      Continue with GitHub
+    </a>
+    <button class="modal-close" onclick="document.getElementById('auth-modal').style.display='none'">Maybe later</button>
+  </div>
+</div>
+
+<!-- Quota modal -->
+<div class="modal-overlay" id="quota-modal" style="display:none">
+  <div class="modal">
+    <h2>Out of free conversions</h2>
+    <p id="quota-modal-message">You've used all your free conversions.<br>Top up to keep converting.</p>
+    <a class="oauth-btn" href="/dashboard#billing" style="background:linear-gradient(135deg,#f59e0b,#d97706);border:none;color:#fff;font-weight:600">Top up credits</a>
+    <button class="modal-close" onclick="document.getElementById('quota-modal').style.display='none'">Maybe later</button>
+  </div>
+</div>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+window._mermaid = mermaid;
+</script>
+<script>
+const API = '';
+let _currentUser = null;
+
+// ── Auth init ─────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const h = await fetch('/api/v1/health').then(r => r.json()).catch(() => ({}));
+    const badge = document.getElementById('env-badge');
+    if (h.env && h.env !== 'production') { badge.textContent = h.env.toUpperCase(); badge.style.display = ''; }
+  } catch(e) {}
+
+  try {
+    const r = await fetch('/api/v1/me');
+    if (r.ok) {
+      _currentUser = await r.json();
+      const left = _currentUser.conversionsRemaining === 'unlimited' ? '∞' : _currentUser.conversionsRemaining;
+      const low = typeof left === 'number' && left <= 5;
+      document.getElementById('auth-area').innerHTML = `
+        <a href="/dashboard" class="user-chip">
+          <div class="user-avatar">${escHtml(_currentUser.name[0].toUpperCase())}</div>
+          ${escHtml(_currentUser.name.split(' ')[0])}
+          <span class="credits-pill ${low ? 'low' : ''}">${left} left</span>
+        </a>`;
+      _unlockUI();
+    } else {
+      document.getElementById('auth-area').innerHTML =
+        '<a class="signin-btn" href="/auth/github"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg> Sign in — free</a>';
+    }
+  } catch(e) {
+    document.getElementById('auth-area').innerHTML = '<a class="signin-btn" href="/auth/github">Sign in — free</a>';
+  }
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let _bundle = null;
+let _mermaidSrc = null;
+let _activeTab = 'diagram';
+
+// Elements
+const fileInput = document.getElementById('file-input');
+const sampleSelect = document.getElementById('sample-select');
+const clearBtn = document.getElementById('clear-btn');
+const convertBtn = document.getElementById('convert-btn');
+const bpelInput = document.getElementById('bpel-input');
+const dropZone = document.getElementById('drop-zone');
+const editorWrapper = document.getElementById('editor-wrapper');
+const copyBtn = document.getElementById('copy-btn');
+const downloadBtn = document.getElementById('download-btn');
+const reportBtn = document.getElementById('report-btn');
+const validateBtn = document.getElementById('validate-btn');
+const outputPre = document.getElementById('output-pre');
+const outputCode = document.getElementById('output-code');
+const emptyOutput = document.getElementById('empty-output');
+const diagramPanel = document.getElementById('diagram-panel');
+const summaryBar = document.getElementById('summary-bar');
+const warningsContainer = document.getElementById('warnings-container');
+const wfCount = document.getElementById('wf-count');
+const inputDot = document.getElementById('input-dot');
+const inputStatus = document.getElementById('input-status');
+const outputDot = document.getElementById('output-dot');
+const outputStatus = document.getElementById('output-status');
+const durationEl = document.getElementById('duration');
+const tabs = document.querySelectorAll('.tab');
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function showEditor(xml) {
+  bpelInput.value = xml;
+  dropZone.style.display = 'none';
+  editorWrapper.style.display = 'flex';
+  editorWrapper.style.flex = '1';
+  setInputStatus('ok', `${xml.length.toLocaleString()} bytes`);
+}
+function setInputStatus(state, msg) { inputDot.className = 'status-dot' + (state ? ` ${state}` : ''); inputStatus.textContent = msg; }
+function setOutputStatus(state, msg) { outputDot.className = 'status-dot' + (state ? ` ${state}` : ''); outputStatus.textContent = msg; }
+
+function showOutput(json) {
+  outputCode.textContent = JSON.stringify(json, null, 2);
+  emptyOutput.style.display = 'none';
+  diagramPanel.style.display = 'none';
+  outputPre.style.display = 'block';
+  copyBtn.disabled = false; downloadBtn.disabled = false; reportBtn.disabled = false; validateBtn.disabled = false;
+}
+
+async function showDiagram() {
+  if (!_mermaidSrc) return;
+  emptyOutput.style.display = 'none';
+  outputPre.style.display = 'none';
+  diagramPanel.style.display = 'flex';
+  copyBtn.disabled = false; downloadBtn.disabled = false; reportBtn.disabled = false; validateBtn.disabled = false;
+  const el = document.getElementById('mermaid-diagram');
+  el.innerHTML = '<div style="color:var(--muted);padding:20px">Rendering…</div>';
+  try {
+    const { svg } = await window._mermaid.render('bpel-flow-' + Date.now(), _mermaidSrc);
+    el.innerHTML = svg;
+  } catch(e) {
+    el.innerHTML = `<pre style="color:var(--error);font-size:11px;white-space:pre-wrap">${escHtml(e.message)}</pre>`;
+  }
+}
+
+function renderTab() {
+  if (!_bundle && !_mermaidSrc) return;
+  if (_activeTab === 'diagram') showDiagram();
+  else if (_activeTab === 'main') showOutput(_bundle.bundle.mainWorkflow);
+  else if (_activeTab === 'subs') showOutput({ subWorkflows: _bundle.bundle.subWorkflows, compensationFlows: _bundle.bundle.compensationFlows, faultHandlerFlows: _bundle.bundle.faultHandlerFlows });
+  else showOutput(_bundle.bundle);
+}
+
+function renderWarnings(warnings) {
+  if (!warnings || !warnings.length) { warningsContainer.innerHTML = ''; return; }
+  const items = warnings.map(w => `<li>${escHtml(w)}</li>`).join('');
+  warningsContainer.innerHTML = `<div class="warnings"><div class="warnings-header" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.warnings-toggle').textContent=this.nextElementSibling.classList.contains('open')?'▲':'▼'"><h3>⚠ ${warnings.length} warning${warnings.length>1?'s':''}</h3><span class="warnings-toggle">▼</span></div><div class="warnings-body"><ul>${items}</ul></div></div>`;
+}
+
+function showAuthModal() { document.getElementById('auth-modal').style.display = 'flex'; }
+
+function setConverting(loading) {
+  convertBtn.disabled = loading;
+  convertBtn.innerHTML = loading
+    ? '<span class="spinner"></span> Converting…'
+    : '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg> Convert';
+}
+
+// ── Auth-gated UI ─────────────────────────────────────────────────────────────
+
+function _unlockUI() {
+  const lock = document.getElementById('deploy-lock');
+  if (lock) lock.remove();
+  const ds = document.getElementById('deploy-section');
+  if (ds) ds.classList.remove('deploy-locked');
+}
+
+function _showTeaser(xml) {
+  const nameMatch = xml.match(/name="([^"]+)"/);
+  const wfName = nameMatch ? nameMatch[1] : 'my_workflow';
+  const sample = JSON.stringify({ name: wfName, version: 1, tasks: [
+    { name: 'task_1', taskReferenceName: 'task_1_ref', type: 'HTTP', inputParameters: { uri: 'https://your-service/api', method: 'POST' } },
+    { name: 'decision', taskReferenceName: 'decision_ref', type: 'SWITCH', expression: 'function execute() { if ($.status === "approved") return "branch_approved"; return "default"; }', evaluatorType: 'javascript', decisionCases: { branch_approved: [] }, defaultCase: [] },
+    { name: 'notify', taskReferenceName: 'notify_ref', type: 'SIMPLE' }
+  ], outputParameters: {} }, null, 2);
+
+  emptyOutput.style.display = 'none';
+  diagramPanel.style.display = 'none';
+  outputPre.style.display = 'block';
+  outputCode.textContent = sample;
+
+  const panelBody = outputPre.closest('.panel-body') || outputPre.parentElement;
+  panelBody.classList.add('output-locked');
+  if (!panelBody.querySelector('.teaser-overlay')) {
+    const ov = document.createElement('div');
+    ov.className = 'teaser-overlay';
+    ov.innerHTML = `<div class="teaser-lock">🔒</div><div class="teaser-msg">Your conversion is ready<br>Sign in to see it</div><div class="teaser-sub">10 seconds · 50 free conversions · no credit card</div><a class="teaser-cta" href="/auth/github"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg> Sign in with GitHub — it's free</a>`;
+    panelBody.style.position = 'relative';
+    panelBody.appendChild(ov);
+  }
+}
+
+// ── File handling ─────────────────────────────────────────────────────────────
+
+function loadFile(file) { const r = new FileReader(); r.onload = e => showEditor(e.target.result); r.readAsText(file); }
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+dropZone.addEventListener('click', () => fileInput.click());
+
+sampleSelect.addEventListener('change', async () => {
+  const val = sampleSelect.value; if (!val) return;
+  setInputStatus('', 'Loading…');
+  try { const r = await fetch(`/samples/${val}.bpel`); if (!r.ok) throw new Error(`HTTP ${r.status}`); showEditor(await r.text()); }
+  catch(e) { setInputStatus('err', `Failed: ${e.message}`); }
+  sampleSelect.value = '';
+});
+
+bpelInput.addEventListener('input', () => {
+  const len = bpelInput.value.trim().length;
+  if (len > 0) setInputStatus('ok', `${bpelInput.value.length.toLocaleString()} bytes`);
+  else setInputStatus('', 'No input');
+});
+
+clearBtn.addEventListener('click', () => {
+  bpelInput.value = '';
+  dropZone.style.display = '';
+  editorWrapper.style.display = 'none';
+  _bundle = null; _mermaidSrc = null;
+  outputPre.style.display = 'none'; diagramPanel.style.display = 'none';
+  summaryBar.style.display = 'none'; emptyOutput.style.display = 'flex';
+  document.getElementById('mermaid-diagram').innerHTML = '';
+  warningsContainer.innerHTML = '';
+  const pb = outputPre.closest('.panel-body') || outputPre.parentElement;
+  pb.classList.remove('output-locked');
+  pb.querySelector('.teaser-overlay')?.remove();
+  copyBtn.disabled = true; downloadBtn.disabled = true; reportBtn.disabled = true; validateBtn.disabled = true;
+  document.getElementById('orkes-result').textContent = '';
+  wfCount.textContent = '';
+  setInputStatus('', 'No input'); setOutputStatus('', 'Ready'); durationEl.textContent = '';
+});
+
+// ── Convert ───────────────────────────────────────────────────────────────────
+
+convertBtn.addEventListener('click', async () => {
+  const xml = bpelInput.value.trim();
+  if (!xml) { setInputStatus('err', 'No BPEL input'); return; }
+
+  setConverting(true);
+  setOutputStatus('', 'Converting…');
+  document.getElementById('orkes-result').textContent = '';
+  _mermaidSrc = null;
+
+  // Clear any previous teaser
+  const pb = outputPre.closest('.panel-body') || outputPre.parentElement;
+  pb.classList.remove('output-locked');
+  pb.querySelector('.teaser-overlay')?.remove();
+
+  try {
+    const [resp, diagResp] = await Promise.all([
+      fetch(`${API}/api/v1/convert`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: xml }),
+      fetch(`${API}/api/v1/convert/diagram`, { method: 'POST', headers: { 'Content-Type': 'application/xml' }, body: xml }),
+    ]);
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      if (resp.status === 429 && data.detail && typeof data.detail === 'object') {
+        const d = data.detail;
+        document.getElementById('quota-modal-message').innerHTML = `${escHtml(d.message || "You've used all your free conversions.")}<br><strong>${d.conversionsRemaining ?? 0}</strong> remaining.`;
+        document.getElementById('quota-modal').style.display = 'flex';
+        setOutputStatus('err', 'Out of free conversions');
+        return;
+      }
+      if (resp.status === 401) { _showTeaser(xml); setOutputStatus('', 'Sign in to see your result'); return; }
+      const msg = typeof data.detail === 'object' ? (data.detail.message || JSON.stringify(data.detail)) : (data.detail || 'conversion failed');
+      setOutputStatus('err', `Error ${resp.status}: ${msg}`);
+      return;
+    }
+
+    _bundle = data;
+
+    if (diagResp.ok) {
+      const dd = await diagResp.json();
+      _mermaidSrc = dd.mermaid;
+      const s = dd.summary || {};
+      document.getElementById('sum-total').textContent = s.total ?? '-';
+      document.getElementById('sum-auto').textContent  = s.autoConverted ?? '-';
+      document.getElementById('sum-work').textContent  = s.needsWork ?? '-';
+      document.getElementById('sum-sub').textContent   = s.subWorkflows ?? '-';
+      document.getElementById('sum-warn').textContent  = s.warningCount ?? '-';
+      summaryBar.style.display = 'flex';
+    }
+
+    renderWarnings(data.bundle?.warnings);
+    renderTab();
+    const wc = data.workflowCount || 1;
+    wfCount.textContent = `${wc} workflow${wc > 1 ? 's' : ''}`;
+    durationEl.textContent = `${data.durationMs}ms`;
+    setOutputStatus(data.warningCount > 0 ? 'warn' : 'ok', `OK — ${data.warningCount} warning${data.warningCount !== 1 ? 's' : ''}`);
+  } catch(e) {
+    setOutputStatus('err', `Request failed: ${e.message}`);
+  } finally {
+    setConverting(false);
+  }
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+tabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    _activeTab = tab.dataset.tab;
+    renderTab();
+  });
+});
+
+// ── Copy / Download ───────────────────────────────────────────────────────────
+
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(outputCode.textContent);
+  copyBtn.textContent = 'Copied!';
+  setTimeout(() => { copyBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy JSON'; }, 1500);
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!_bundle) return;
+  const name = _bundle.bundle?.mainWorkflow?.name || 'workflow';
+  const blob = new Blob([JSON.stringify(_bundle.bundle.mainWorkflow, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${name}.json`; a.click(); URL.revokeObjectURL(a.href);
+});
+
+// ── Export Report ─────────────────────────────────────────────────────────────
+
+reportBtn.addEventListener('click', exportReport);
+
+async function exportReport() {
+  if (!_bundle) return;
+  reportBtn.disabled = true;
+  reportBtn.innerHTML = '<span class="spinner"></span> Building…';
+  try { await _buildAndOpenReport(); }
+  finally { reportBtn.disabled = false; reportBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Export Report'; }
+}
+
+async function _buildAndOpenReport() {
+  const wf = _bundle.bundle?.mainWorkflow || {};
+  const wfName = wf.name || 'workflow';
+  const warnings = _bundle.bundle?.warnings || [];
+  const subs = (_bundle.bundle?.subWorkflows || []).concat(_bundle.bundle?.compensationFlows || [], _bundle.bundle?.faultHandlerFlows || []);
+  const total = document.getElementById('sum-total').textContent;
+  const auto  = document.getElementById('sum-auto').textContent;
+  const work  = document.getElementById('sum-work').textContent;
+  const subCount = document.getElementById('sum-sub').textContent;
+  const warnCount = document.getElementById('sum-warn').textContent;
+  const date  = new Date().toLocaleDateString('en-AU', { year:'numeric', month:'long', day:'numeric' });
+
+  let diagramSvg = '';
+  if (_mermaidSrc) {
+    try { const { svg } = await window._mermaid.render('report-' + Date.now(), _mermaidSrc); diagramSvg = svg; } catch(e) {}
+  }
+
+  const autoPercent = total > 0 ? Math.round((parseInt(auto)||0) / (parseInt(total)||1) * 100) : 0;
+  const catWorkers   = warnings.filter(w => /SIMPLE task|worker stub|conductor worker|java sdk|python sdk/i.test(w));
+  const catCallbacks = warnings.filter(w => /WAIT|callback|inbound message|push.pull|onMessage/i.test(w) && !catWorkers.includes(w));
+  const catCorrel    = warnings.filter(w => /correlation set/i.test(w));
+  const catSoap      = warnings.filter(w => /SOAP|WS-|wsdl/i.test(w) && !catWorkers.includes(w));
+  const catOther     = warnings.filter(w => !catWorkers.includes(w) && !catCallbacks.includes(w) && !catCorrel.includes(w) && !catSoap.includes(w));
+
+  function warnSection(title, icon, color, items) {
+    if (!items.length) return '';
+    const rows = items.map((w,i) => { const ref = w.startsWith('[') ? w.slice(1,w.indexOf(']')) : `Item ${i+1}`; const msg = w.startsWith('[') ? w.slice(w.indexOf(']')+2) : w; return `<div class="backlog-item"><div class="backlog-num" style="background:${color}">${i+1}</div><div><div class="backlog-ref">${escHtml(ref)}</div><div class="backlog-msg">${escHtml(msg)}</div></div></div>`; }).join('');
+    return `<div class="backlog-section"><h3 class="backlog-title" style="border-left:4px solid ${color}">${icon} ${escHtml(title)} <span class="backlog-count">${items.length}</span></h3>${rows}</div>`;
+  }
+
+  const subsHtml = subs.length ? `<div class="backlog-section"><h3 class="backlog-title" style="border-left:4px solid #6366f1">📦 Sub-Workflows <span class="backlog-count">${subs.length}</span></h3><table class="sub-table"><thead><tr><th>#</th><th>Name</th><th>Tasks</th></tr></thead><tbody>${subs.map((s,i)=>`<tr><td>${i+1}</td><td>${escHtml(s.name||'')}</td><td>${(s.tasks||[]).length}</td></tr>`).join('')}</tbody></table></div>` : '';
+
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Migration Report — ${escHtml(wfName)}</title><style>@page{size:A4;margin:15mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;color:#1e293b;background:#fff}.slide{width:100%;min-height:257mm;page-break-after:always;display:flex;flex-direction:column;padding:10mm 12mm;position:relative}.slide:last-child{page-break-after:avoid}.slide-cover{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);color:#fff;justify-content:space-between}.cover-logo{font-size:22px;font-weight:800;letter-spacing:-.5px}.cover-logo span{color:#a5b4fc}.cover-main{flex:1;display:flex;flex-direction:column;justify-content:center;padding:16mm 0 8mm}.cover-label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#a5b4fc;margin-bottom:8px}.cover-wfname{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:1.15;color:#fff;margin-bottom:6px;word-break:break-all}.cover-subtitle{font-size:14px;color:#c7d2fe}.cover-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10mm 0}.stat-card{background:rgba(255,255,255,.1);border-radius:8px;padding:12px 8px;text-align:center}.stat-num{font-size:26px;font-weight:800;line-height:1}.stat-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#c7d2fe;margin-top:3px}.num-green{color:#4ade80}.num-amber{color:#fbbf24}.num-blue{color:#a5b4fc}.cover-footer{display:flex;justify-content:space-between;align-items:flex-end;font-size:10px;color:#a5b4fc;border-top:1px solid rgba(255,255,255,.15);padding-top:4mm}.slide-header{display:flex;justify-content:space-between;align-items:center;padding-bottom:4mm;border-bottom:2px solid #e2e8f0;margin-bottom:6mm}.slide-title{font-size:18px;font-weight:700}.slide-wfbadge{background:#f1f5f9;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:600;color:#475569}.diagram-container{flex:1;display:flex;align-items:center;justify-content:center;padding:4mm;overflow:hidden}.diagram-container svg{max-width:100%;max-height:210mm;height:auto}.legend-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:4mm;padding-top:3mm;border-top:1px solid #e2e8f0}.legend-item{display:flex;align-items:center;gap:5px;font-size:9px;color:#64748b}.legend-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0}.assess-grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm;margin-bottom:6mm}.assess-card{border-radius:8px;padding:5mm}.assess-card.green{background:#f0fdf4;border:1px solid #bbf7d0}.assess-card.amber{background:#fffbeb;border:1px solid #fde68a}.assess-card h3{font-size:11px;font-weight:700;margin-bottom:3mm}.assess-card.green h3{color:#15803d}.assess-card.amber h3{color:#b45309}.assess-card ul{padding-left:14px}.assess-card li{font-size:11px;line-height:1.7;color:#374151}.progress-bar{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin:3mm 0 1mm}.progress-fill{height:100%;background:linear-gradient(90deg,#22c55e,#86efac);border-radius:4px}.progress-label{font-size:10px;color:#64748b}.wf-table{width:100%;border-collapse:collapse;font-size:11px}.wf-table th{background:#f1f5f9;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#64748b}.wf-table td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.badge-ok{background:#dcfce7;color:#166534;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:600}.backlog-section{margin-bottom:5mm}.backlog-title{font-size:12px;font-weight:700;color:#1e293b;padding:2mm 0 2mm 3mm;margin-bottom:2mm;display:flex;align-items:center;gap:6px}.backlog-count{background:#f1f5f9;color:#64748b;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600}.backlog-item{display:flex;gap:8px;margin-bottom:6px;align-items:flex-start}.backlog-num{width:20px;height:20px;border-radius:50%;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}.backlog-ref{font-size:10px;font-weight:700;color:#475569;margin-bottom:1px;font-family:monospace}.backlog-msg{font-size:10.5px;color:#374151;line-height:1.5}.sub-table{width:100%;border-collapse:collapse;font-size:11px}.sub-table th{background:#f1f5f9;padding:4px 8px;text-align:left;font-size:10px;text-transform:uppercase;color:#64748b}.sub-table td{padding:4px 8px;border-bottom:1px solid #f1f5f9}.slide-footer{margin-top:auto;padding-top:3mm;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
+<div class="slide slide-cover"><div class="cover-logo">BPEL<span>2</span>Orkes</div><div class="cover-main"><div class="cover-label">BPEL → Orkes Conductor</div><div class="cover-wfname">${escHtml(wfName)}</div><div class="cover-subtitle">Automated Migration Assessment &amp; Developer Backlog</div></div><div class="cover-stats"><div class="stat-card"><div class="stat-num">${total}</div><div class="stat-lbl">Total Tasks</div></div><div class="stat-card"><div class="stat-num num-green">${auto}</div><div class="stat-lbl">Auto-converted</div></div><div class="stat-card"><div class="stat-num num-amber">${work}</div><div class="stat-lbl">Needs Work</div></div><div class="stat-card"><div class="stat-num num-blue">${subCount}</div><div class="stat-lbl">Sub-Workflows</div></div><div class="stat-card"><div class="stat-num num-amber">${warnCount}</div><div class="stat-lbl">Warnings</div></div></div><div class="cover-footer"><span>Generated ${escHtml(date)}</span><span>KTools · Kshetra Studio</span></div></div>
+<div class="slide"><div class="slide-header"><div class="slide-title">Conductor Workflow — Visual Overview</div><div class="slide-wfbadge">${escHtml(wfName)}</div></div><div class="diagram-container">${diagramSvg||'<div style="color:#94a3b8;text-align:center;padding:20mm">Diagram not available</div>'}</div><div class="legend-row"><div class="legend-item"><div class="legend-dot" style="background:#166534"></div>HTTP/SET_VARIABLE/INLINE — auto-converted</div><div class="legend-item"><div class="legend-dot" style="background:#78350f"></div>WAIT/SIMPLE — needs work</div><div class="legend-item"><div class="legend-dot" style="background:#7f1d1d"></div>TERMINATE</div><div class="legend-item"><div class="legend-dot" style="background:#4c1d95"></div>HUMAN</div></div><div class="slide-footer"><span>BPEL2Orkes · KTools</span><span>${escHtml(date)}</span></div></div>
+<div class="slide"><div class="slide-header"><div class="slide-title">Migration Assessment</div><div class="slide-wfbadge">${escHtml(wfName)}</div></div><div class="assess-grid"><div class="assess-card green"><h3>✅ Auto-Converted (${auto} of ${total} tasks)</h3><div class="progress-bar"><div class="progress-fill" style="width:${autoPercent}%"></div></div><div class="progress-label">${autoPercent}% automatically migrated</div><ul style="margin-top:6px"><li>HTTP tasks — outbound REST calls preserved</li><li>SET_VARIABLE — BPEL assign operations</li><li>SWITCH / FORK_JOIN — flow control structures</li><li>DO_WHILE — loop activities</li><li>SUB_WORKFLOW — scopes extracted</li></ul></div><div class="assess-card amber"><h3>⚠ Needs Developer Work (${work} tasks)</h3><ul style="margin-top:6px">${catWorkers.length?`<li><strong>${catWorkers.length} Worker(s)</strong> — implement using Java/Python SDK</li>`:''} ${catCallbacks.length?`<li><strong>${catCallbacks.length} Callback(s)</strong> — wire ESB/MQ to POST task completion</li>`:''} ${catSoap.length?`<li><strong>${catSoap.length} SOAP service(s)</strong> — wrap WS envelope in worker</li>`:''} ${catCorrel.length?`<li><strong>${catCorrel.length} Correlation set(s)</strong> — use workflowId as key</li>`:''} ${catOther.length?`<li><strong>${catOther.length} other item(s)</strong> — see backlog</li>`:''}</ul></div></div>${subs.length?`<h3 style="font-size:12px;font-weight:700;margin-bottom:3mm">📦 Generated Workflows (${1+subs.length} total)</h3><table class="wf-table"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Tasks</th><th>Status</th></tr></thead><tbody><tr><td>1</td><td><strong>${escHtml(wfName)}</strong></td><td>Main</td><td>${(wf.tasks||[]).length}</td><td><span class="badge-ok">Generated</span></td></tr>${subs.map((s,i)=>`<tr><td>${i+2}</td><td>${escHtml(s.name||'')}</td><td>Sub</td><td>${(s.tasks||[]).length}</td><td><span class="badge-ok">Generated</span></td></tr>`).join('')}</tbody></table>`:''}<div class="slide-footer"><span>BPEL2Orkes · KTools</span><span>${escHtml(date)}</span></div></div>
+<div class="slide"><div class="slide-header"><div class="slide-title">Developer Backlog</div><div class="slide-wfbadge">${warnCount} items</div></div>${warnings.length===0?'<div style="text-align:center;padding:20mm;color:#22c55e;font-size:18px;font-weight:700">✅ No warnings — ready to deploy</div>':`${warnSection('Worker Implementation Required','🔧','#b45309',catWorkers)}${warnSection('Callback / Push→Pull Integration','📡','#1d4ed8',catCallbacks)}${warnSection('SOAP / WS Service Wrapping','🔌','#7c3aed',catSoap)}${warnSection('Correlation Set Migration','🔗','#0f766e',catCorrel)}${warnSection('Other Migration Notes','📝','#64748b',catOther)}${subsHtml}`}<div style="margin-top:auto;background:#f8fafc;border-radius:8px;padding:4mm;border:1px solid #e2e8f0"><div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:2mm">⚡ Next Steps</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:10px;color:#374151"><div>1. Implement each SIMPLE task as a Conductor worker</div><div>2. Deploy workers — they poll via taskType name</div><div>3. Wire ESB/MQ to POST WAIT task completions</div><div>4. Deploy workflow via PUT /api/metadata/workflow</div><div>5. Start test run: POST /api/workflow/${escHtml(wfName)}</div><div>6. Monitor in Orkes Console — input/output per task</div></div></div><div class="slide-footer"><span>BPEL2Orkes · KTools</span><span>${escHtml(date)}</span></div></div>
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) { alert('Pop-up blocked — allow pop-ups and try again.'); return; }
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => { try { win.print(); } catch(e) {} }, 800);
+}
+
+// ── Deploy to Orkes ───────────────────────────────────────────────────────────
+
+validateBtn.addEventListener('click', async () => {
+  const keyId = document.getElementById('orkes-key-id').value.trim();
+  const keySecret = document.getElementById('orkes-key-secret').value.trim();
+  const orkesResult = document.getElementById('orkes-result');
+  if (!keyId || !keySecret) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ Enter both Key ID and Key Secret.'; return; }
+  const xml = bpelInput.value.trim();
+  if (!xml) { orkesResult.className = 'orkes-result error'; orkesResult.textContent = '✗ No BPEL input.'; return; }
+  validateBtn.disabled = true;
+  validateBtn.innerHTML = '<span class="spinner"></span> Deploying…';
+  orkesResult.textContent = '';
+  try {
+    const baseUrl = document.getElementById('orkes-base-url').value.trim() || 'https://developer.orkescloud.com';
+    const resp = await fetch(`${API}/api/v1/validate`, { method: 'POST', headers: { 'Content-Type': 'application/xml', 'X-Orkes-Key-Id': keyId, 'X-Orkes-Key-Secret': keySecret, 'X-Orkes-Base-Url': baseUrl }, body: xml });
+    const data = await resp.json();
+    if (data.orkesOk) { orkesResult.className = 'orkes-result success'; orkesResult.textContent = `✓ Deployed "${data.workflowName}" (HTTP ${data.orkesStatus})`; }
+    else { orkesResult.className = 'orkes-result error'; orkesResult.textContent = `✗ Orkes rejected: HTTP ${data.orkesStatus} — ${data.orkesResponse || ''}`; }
+  } catch(e) {
+    orkesResult.className = 'orkes-result error'; orkesResult.textContent = `✗ Request failed: ${e.message}`;
+  } finally {
+    validateBtn.disabled = false;
+    validateBtn.innerHTML = '<svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Deploy to Orkes';
+  }
+});
+</script>
+</body>
+</html>

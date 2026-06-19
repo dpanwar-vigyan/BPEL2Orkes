@@ -6,323 +6,687 @@
 <title>BPEL2Orkes — Dashboard</title>
 <style>
   :root {
-    --bg:           #ffffff;
-    --surface:      #f8fafc;
-    --surface2:     #f1f5f9;
-    --border:       #e2e8f0;
-    --accent:       #6c63ff;
-    --accent-hover: #5a52e8;
-    --accent-light: #ede9ff;
-    --success:      #16a34a;
-    --warn:         #d97706;
-    --error:        #dc2626;
-    --text:         #1e293b;
-    --muted:        #64748b;
-    --code-bg:      #f1f5f9;
-    --code-text:    #334155;
+    --bg:          #f8fafc;
+    --surface:     #ffffff;
+    --border:      #e2e8f0;
+    --accent:      #6c63ff;
+    --accent-h:    #5a52e8;
+    --accent-bg:   #ede9ff;
+    --success:     #16a34a;
+    --success-bg:  #f0fdf4;
+    --warn:        #d97706;
+    --error:       #dc2626;
+    --text:        #1e293b;
+    --muted:       #64748b;
+    --code-bg:     #f1f5f9;
+    --code-text:   #334155;
+    --sidebar-w:   220px;
+    --header-h:    56px;
     --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
-    --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+    --shadow:      0 1px 3px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.04);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; display: flex; flex-direction: column; }
 
-  /* ── Header ── */
-  header {
-    background: rgba(255,255,255,0.95);
-    backdrop-filter: blur(8px);
+  /* ══ Top header ══════════════════════════════════════════════════════════════ */
+  .topbar {
+    height: var(--header-h);
+    background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0 28px;
     display: flex;
     align-items: center;
+    padding: 0 20px;
     gap: 14px;
-    height: 60px;
-    position: sticky; top: 0; z-index: 50;
+    flex-shrink: 0;
+    position: sticky; top: 0; z-index: 40;
   }
+  .hamburger { display: none; background: none; border: none; cursor: pointer; padding: 4px; color: var(--muted); }
+  .hamburger svg { display: block; }
   .wordmark { display: flex; flex-direction: column; gap: 1px; text-decoration: none; }
-  .wordmark-main { font-size: 17px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); line-height: 1; }
+  .wordmark-main { font-size: 16px; font-weight: 800; letter-spacing: -.4px; color: var(--text); line-height: 1; }
   .wordmark-main span { color: var(--accent); }
-  .wordmark-sub { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: 0.8px; text-transform: uppercase; }
-  .ktools-badge { background: var(--accent-light); color: var(--accent); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
-  .back-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; transition: color .15s, border-color .15s, background .15s; }
-  .back-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-light); }
-  .header-links { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-  .header-links a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 6px; transition: color .15s; }
-  .header-links a:hover { color: var(--error); }
+  .wordmark-sub  { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: .8px; text-transform: uppercase; }
+  .kbadge { background: var(--accent-bg); color: var(--accent); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  .user-info { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .user-name { font-weight: 600; }
+  .tier-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .tier-free     { background: #dbeafe; color: #1e40af; }
+  .tier-paid     { background: var(--accent-bg); color: var(--accent); }
+  .tier-starter  { background: #dcfce7; color: #166534; }
+  .credits-badge { background: var(--success-bg); color: var(--success); font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .credits-badge.low { background: #fef9c3; color: #854d0e; }
 
-  /* ── Main layout ── */
-  .container { max-width: 700px; margin: 48px auto; padding: 0 24px 80px; }
-  h2 { font-size: 22px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.3px; }
-  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
+  /* ══ Layout shell ════════════════════════════════════════════════════════════ */
+  .shell { display: flex; flex: 1; min-height: 0; }
 
-  /* ── Cards ── */
-  .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  .card h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.9px; color: var(--muted); margin-bottom: 14px; }
-  .stat-row { display: flex; gap: 28px; }
-  .stat { display: flex; flex-direction: column; gap: 3px; }
-  .stat .num { font-size: 30px; font-weight: 800; line-height: 1; }
-  .stat .lbl { font-size: 11px; color: var(--muted); }
-  .num-green { color: var(--success); }
-  .num-amber { color: var(--warn); }
+  /* ══ Sidebar ═════════════════════════════════════════════════════════════════ */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+    position: sticky;
+    top: var(--header-h);
+    height: calc(100vh - var(--header-h));
+  }
+  .nav-section { padding: 16px 12px 8px; }
+  .nav-label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; padding: 0 8px; margin-bottom: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 7px;
+    font-size: 13px; font-weight: 500; color: var(--muted);
+    cursor: pointer; text-decoration: none;
+    transition: background .12s, color .12s;
+    border: none; background: none; width: 100%; text-align: left; font-family: var(--font);
+  }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: .7; }
+  .nav-item.active svg { opacity: 1; }
+  .nav-divider { border: none; border-top: 1px solid var(--border); margin: 8px 12px; }
+  .sidebar-bottom { margin-top: auto; padding: 12px; }
 
-  /* ── Tier badge ── */
-  .tier-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-  .tier-free      { background: #dbeafe; color: #1e40af; }
-  .tier-developer { background: var(--accent-light); color: var(--accent); }
-  .tier-starter   { background: #dcfce7; color: #166534; }
+  /* ══ Main content ════════════════════════════════════════════════════════════ */
+  .content { flex: 1; overflow-y: auto; padding: 32px 36px; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-title { font-size: 20px; font-weight: 800; letter-spacing: -.3px; margin-bottom: 4px; }
+  .page-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
 
-  /* ── API key ── */
-  .api-key-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-  .api-key-display { font-family: var(--mono); font-size: 13px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* ══ Cards ═══════════════════════════════════════════════════════════════════ */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; box-shadow: var(--shadow); }
+  .card + .card { margin-top: 16px; }
+  .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .9px; color: var(--muted); margin-bottom: 14px; }
+  .card-row { display: flex; gap: 16px; flex-wrap: wrap; }
 
-  /* ── Buttons ── */
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: background .15s, border-color .15s; text-decoration: none; font-family: var(--font); }
-  .btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: var(--surface); border-color: #c7d2fe; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: var(--accent-hover); }
-  .btn-danger { background: #fff; color: var(--error); border: 1px solid #fecaca; }
-  .btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
-  .btn-upgrade { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
-  .btn-upgrade:hover { opacity: 0.9; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* ══ Stat widgets ════════════════════════════════════════════════════════════ */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-size: 32px; font-weight: 800; line-height: 1; letter-spacing: -.5px; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .green { color: var(--success); }
+  .amber { color: var(--warn); }
+  .purple { color: var(--accent); }
 
-  /* ── Upgrade card ── */
-  .upgrade-card { background: linear-gradient(135deg, #faf5ff, #ede9ff); border: 1px solid #c4b5fd; }
-  .upgrade-card h3 { color: var(--accent); }
+  /* ══ Buttons ═════════════════════════════════════════════════════════════════ */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: background .12s, border-color .12s, color .12s; font-family: var(--font); text-decoration: none; }
+  .btn-primary   { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-h); }
+  .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { background: var(--bg); border-color: #c7d2fe; }
+  .btn-ghost { background: none; color: var(--muted); border-color: transparent; }
+  .btn-ghost:hover { background: var(--bg); color: var(--text); }
+  .btn-danger { background: var(--surface); color: var(--error); border-color: #fecaca; }
+  .btn-danger:hover { background: #fef2f2; }
+  .btn-upgrade { background: linear-gradient(135deg,#f59e0b,#d97706); color: #fff; border-color: transparent; }
+  .btn-upgrade:hover { opacity: .92; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
 
-  /* ── Plan grid ── */
-  .upgrade-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-  .plan { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: #fff; }
-  .plan.current { border-color: var(--accent); background: var(--accent-light); }
-  .plan-name { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
-  .plan-price { font-size: 20px; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
-  .plan-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  /* ══ Copy button with feedback ═══════════════════════════════════════════════ */
+  .copy-btn { position: relative; }
+  .copy-btn .copied { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; white-space: nowrap; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .copy-btn .copied::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 4px solid transparent; border-top-color: var(--text); }
+  .copy-btn.show-copied .copied { opacity: 1; }
 
-  /* ── Code snippets ── */
-  code { font-family: var(--mono); font-size: 11px; background: var(--code-bg); color: var(--code-text); }
-  code.block { display: block; padding: 8px 10px; border-radius: 6px; margin-top: 4px; overflow-x: auto; white-space: nowrap; }
-  code.inline { padding: 1px 6px; border-radius: 3px; }
+  /* ══ API key display ═════════════════════════════════════════════════════════ */
+  .key-row { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .key-display { flex: 1; font-family: var(--mono); font-size: 13px; background: var(--code-bg); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
-  /* ── Copy feedback ── */
-  .copy-feedback { font-size: 11px; color: var(--success); margin-left: 4px; opacity: 0; transition: opacity .2s; }
-  .copy-feedback.show { opacity: 1; }
+  /* ══ Code snippets ═══════════════════════════════════════════════════════════ */
+  .snippet-block { margin-bottom: 20px; }
+  .snippet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .snippet-label { font-size: 12px; font-weight: 600; color: var(--text); }
+  .snippet-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .snippet-code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--code-text); overflow-x: auto; white-space: pre; line-height: 1.6; }
 
-  /* ── Success toast ── */
-  .toast-success { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #166534; }
+  /* ══ Dev links grid ══════════════════════════════════════════════════════════ */
+  .dev-links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+  .dev-link { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--text); transition: border-color .12s, background .12s; }
+  .dev-link:hover { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+  .dev-link-icon { font-size: 18px; flex-shrink: 0; }
+  .dev-link-label { font-size: 13px; font-weight: 600; }
+  .dev-link-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .dev-link:hover .dev-link-sub { color: inherit; opacity: .75; }
 
-  /* ── Loading ── */
-  .loading { color: var(--muted); padding: 60px; text-align: center; font-size: 15px; }
+  /* ══ Billing top-up ══════════════════════════════════════════════════════════ */
+  .topup-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .topup-btn-custom { display: flex; gap: 8px; align-items: center; }
+  .input { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; font-size: 13px; color: var(--text); font-family: var(--font); outline: none; }
+  .input:focus { border-color: var(--accent); }
+  .billing-balance { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+  .balance-num { font-size: 36px; font-weight: 800; letter-spacing: -.5px; color: var(--text); }
+  .balance-label { font-size: 13px; color: var(--muted); }
+
+  /* ══ Toast ═══════════════════════════════════════════════════════════════════ */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: 13px; font-weight: 500; padding: 10px 20px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.2); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 200; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+  .toast.success { background: #166534; }
+  .toast.error   { background: var(--error); }
+
+  /* ══ Quick-action strip ══════════════════════════════════════════════════════ */
+  .quick-actions { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .quick-card { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--text); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); transition: border-color .12s, box-shadow .12s; flex: 1; min-width: 180px; }
+  .quick-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(108,99,255,.12); color: var(--accent); }
+  .quick-icon { font-size: 22px; }
+
+  /* ══ Sidebar overlay (mobile) ════════════════════════════════════════════════ */
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 30; }
+
+  /* ══ Mobile ══════════════════════════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    .hamburger { display: flex; }
+    .sidebar {
+      position: fixed; top: 0; left: -240px; height: 100vh;
+      width: 240px; z-index: 35; transition: left .22s; top: 0;
+    }
+    .sidebar.open { left: 0; }
+    .sidebar-overlay.open { display: block; }
+    .content { padding: 20px 16px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .dev-links { grid-template-columns: 1fr; }
+    .key-actions { flex-wrap: wrap; }
+  }
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
-<header>
+
+<!-- ══ Top bar ════════════════════════════════════════════════════════════════ -->
+<div class="topbar">
+  <button class="hamburger" id="hamburger" aria-label="Menu">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  </button>
   <a class="wordmark" href="/">
     <span class="wordmark-main">BPEL<span>2</span>Orkes</span>
     <span class="wordmark-sub">KTools · Kshetra Studio</span>
   </a>
-  <span class="ktools-badge">KTools</span>
-  <a href="/" class="back-btn">← Converter</a>
-  <div class="header-links">
-    <a href="/auth/logout">Sign out</a>
+  <span class="kbadge">KTools</span>
+  <div class="topbar-right" id="topbar-right">
+    <!-- populated by JS -->
   </div>
-</header>
-
-<div class="container" id="app">
-  <div class="loading">Loading your dashboard…</div>
 </div>
 
-<script>
-(async () => {
-  const app = document.getElementById('app');
+<!-- ══ Shell ══════════════════════════════════════════════════════════════════ -->
+<div class="shell">
 
-  const fallback = setTimeout(() => {
-    if (app.textContent.includes('Loading')) {
-      app.innerHTML = '<div style="color:var(--warn);padding:20px;font-size:13px">Dashboard timed out. <a href="/auth/logout" style="color:var(--accent)">Sign out and try again</a></div>';
-    }
-  }, 6000);
+  <!-- Sidebar overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-  try {
-    const ctrl = new AbortController();
-    const fetchTimer = setTimeout(() => ctrl.abort(), 8000);
-    const resp = await fetch('/api/v1/me', { signal: ctrl.signal });
-    clearTimeout(fetchTimer);
-    clearTimeout(fallback);
-    if (!resp.ok) { window.location.href = '/'; return; }
-    const user = await resp.json();
+  <!-- ══ Sidebar ═══════════════════════════════════════════════════════════════ -->
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-section">
+      <div class="nav-label">Workspace</div>
+      <button class="nav-item active" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </button>
+      <button class="nav-item" data-page="developer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Developer
+      </button>
+      <button class="nav-item" data-page="billing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Billing
+      </button>
+    </div>
 
-    const remaining = user.conversionsRemaining === 'unlimited' ? '∞' : user.conversionsRemaining;
-    const balanceDollars = (user.creditBalanceCents / 100).toFixed(2);
-    const centsPerConv = user.centsPerConversion || 10;
-    const rateLabel = `$${(centsPerConv/100).toFixed(2)}/conversion · $1 = ${Math.floor(100/centsPerConv)} conversions`;
-    const low = typeof user.conversionsRemaining === 'number' && user.conversionsRemaining <= 5;
-    const tierLabel = {'free':'Free','paid':'Paid','starter':'Starter (Unlimited)'}[user.tier] || user.tier;
-    const tierClass = user.tier === 'starter' ? 'tier-starter' : user.tier === 'paid' ? 'tier-developer' : 'tier-free';
-    const topped = new URLSearchParams(location.search).get('topped_up');
+    <hr class="nav-divider">
 
-    app.innerHTML = `
-      ${topped ? '<div class="toast-success">✓ Credits added — ready to convert!</div>' : ''}
+    <div class="nav-section">
+      <div class="nav-label">Resources</div>
+      <a class="nav-item" href="/docs" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        API Docs
+      </a>
+      <a class="nav-item" href="https://github.com/kshetra-studio/bpel2orkes" target="_blank">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        GitHub
+      </a>
+    </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <h2>Welcome back, ${escHtml(user.name.split(' ')[0])}</h2>
-        <a href="/#converter" class="btn btn-primary">Convert now →</a>
+    <div class="sidebar-bottom">
+      <a class="nav-item" href="/auth/logout" style="color:var(--error)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign out
+      </a>
+    </div>
+  </nav>
+
+  <!-- ══ Main content ═══════════════════════════════════════════════════════════ -->
+  <main class="content">
+
+    <!-- ── Overview ─────────────────────────────────────────────────────────── -->
+    <section class="page active" id="page-overview">
+      <div class="page-title" id="welcome-title">Overview</div>
+      <div class="page-sub" id="welcome-sub">Your BPEL2Orkes workspace</div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Conversions remaining</div>
+          <div class="stat-value" id="stat-remaining">—</div>
+          <div class="stat-sub" id="stat-remaining-sub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Credit balance</div>
+          <div class="stat-value purple" id="stat-balance">—</div>
+          <div class="stat-sub" id="stat-balance-sub"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Plan</div>
+          <div class="stat-value" id="stat-plan" style="font-size:20px;padding-top:6px">—</div>
+          <div class="stat-sub" id="stat-plan-sub"></div>
+        </div>
       </div>
-      <div class="subtitle">${escHtml(user.email)}</div>
 
-      <!-- Credits card -->
+      <div class="quick-actions">
+        <a class="quick-card" href="/convert">
+          <span class="quick-icon">⚡</span>
+          <div>
+            <div>Open Converter</div>
+            <div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:1px">Paste or upload a BPEL file</div>
+          </div>
+          <svg style="width:16px;height:16px;margin-left:auto;opacity:.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <button class="quick-card" onclick="nav('developer')">
+          <span class="quick-icon">🔑</span>
+          <div>
+            <div>API Keys &amp; MCP</div>
+            <div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:1px">Get your credentials</div>
+          </div>
+          <svg style="width:16px;height:16px;margin-left:auto;opacity:.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <button class="quick-card" onclick="nav('billing')">
+          <span class="quick-icon">💳</span>
+          <div>
+            <div>Top up credits</div>
+            <div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:1px">Add conversions to your account</div>
+          </div>
+          <svg style="width:16px;height:16px;margin-left:auto;opacity:.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+
       <div class="card">
-        <h3>Credits &amp; Usage</h3>
-        <div class="stat-row" style="margin-bottom:16px">
-          <div class="stat">
-            <span class="num ${low ? 'num-amber' : 'num-green'}">${remaining}</span>
-            <span class="lbl">Conversions left</span>
+        <div class="card-title">Account</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="avatar" id="acc-avatar" style="width:40px;height:40px;font-size:16px">?</div>
+          <div>
+            <div style="font-weight:700;font-size:15px" id="acc-name">—</div>
+            <div style="font-size:12px;color:var(--muted)" id="acc-email">—</div>
           </div>
-          <div class="stat">
-            <span class="num">$${balanceDollars}</span>
-            <span class="lbl">Credit balance</span>
-          </div>
-          <div class="stat" style="margin-left:auto;align-items:flex-end">
-            <span class="tier-badge ${tierClass}">${tierLabel}</span>
+          <div style="margin-left:auto">
+            <span class="tier-pill tier-free" id="acc-tier-badge">Free</span>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--muted)">${user.tier === 'starter' ? '✓ Unlimited conversions included' : rateLabel}</div>
+      </div>
+    </section>
+
+    <!-- ── Developer ─────────────────────────────────────────────────────────── -->
+    <section class="page" id="page-developer">
+      <div class="page-title">Developer</div>
+      <div class="page-sub">API keys, MCP configuration, and integration snippets</div>
+
+      <!-- API Key -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">API Key</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Use this key to authenticate REST API calls and MCP connections. Keep it secret.</div>
+        <div class="key-row">
+          <div class="key-display" id="key-display">••••••••••••••••••••••••••••••••</div>
+          <div class="key-actions">
+            <button class="btn btn-secondary btn-sm" onclick="revealKey()">Show</button>
+            <button class="btn btn-secondary btn-sm copy-btn" id="copy-key-btn" onclick="copyKey()">
+              <span class="copied">Copied!</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+            <button class="btn btn-danger btn-sm" id="rotate-btn" onclick="rotateKey()">Rotate</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Top-up card -->
-      ${user.tier !== 'starter' ? `
-      <div class="card upgrade-card">
-        <h3>Top up credits</h3>
-        <p style="font-size:13px;color:var(--text);margin-bottom:16px">
-          Add any amount — credits never expire. ${rateLabel}.
-        </p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-          <button class="btn btn-secondary" onclick="topup(500)">$5 <span style="font-size:11px;color:var(--muted)">50 conv</span></button>
-          <button class="btn btn-secondary" onclick="topup(1000)">$10 <span style="font-size:11px;color:var(--muted)">100 conv</span></button>
-          <button class="btn btn-secondary" onclick="topup(2500)">$25 <span style="font-size:11px;color:var(--muted)">250 conv</span></button>
-          <button class="btn btn-upgrade" onclick="topup(10000)" id="topup-btn">$100 <span style="font-size:11px;opacity:0.85">1000 conv</span></button>
+      <!-- Snippets -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Integration Snippets</div>
+
+        <div class="snippet-block">
+          <div class="snippet-header">
+            <div>
+              <div class="snippet-label">REST API — HTTP header</div>
+              <div class="snippet-desc">Add to every request to the REST API</div>
+            </div>
+            <button class="btn btn-ghost btn-sm copy-btn" onclick="copySnippet('snippet-rest',this)">
+              <span class="copied">Copied!</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="snippet-code" id="snippet-rest">X-Api-Key: loading…</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="custom-amount" type="number" min="5" max="1000" placeholder="Custom $amount"
-            style="width:150px;background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:13px;outline:none">
-          <button class="btn btn-secondary" onclick="topupCustom()">Add credits</button>
+
+        <div class="snippet-block">
+          <div class="snippet-header">
+            <div>
+              <div class="snippet-label">Claude Code MCP — HTTP transport</div>
+              <div class="snippet-desc">Run once in your terminal to register the MCP server</div>
+            </div>
+            <button class="btn btn-ghost btn-sm copy-btn" onclick="copySnippet('snippet-mcp',this)">
+              <span class="copied">Copied!</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="snippet-code" id="snippet-mcp">loading…</div>
         </div>
-        <div style="margin-top:14px">
-          <a href="mailto:hello@kshetra.studio?subject=BPEL2Orkes Unlimited Plan" style="font-size:12px;color:var(--muted)">
-            Need unlimited conversions? Ask about the Starter plan →
+
+        <div class="snippet-block">
+          <div class="snippet-header">
+            <div>
+              <div class="snippet-label">Claude Desktop — mcpServers config (via mcp-remote)</div>
+              <div class="snippet-desc">Add to <code style="font-size:11px;background:var(--code-bg);padding:1px 5px;border-radius:3px">claude_desktop_config.json</code></div>
+            </div>
+            <button class="btn btn-ghost btn-sm copy-btn" onclick="copySnippet('snippet-desktop',this)">
+              <span class="copied">Copied!</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="snippet-code" id="snippet-desktop">loading…</div>
+        </div>
+      </div>
+
+      <!-- Dev resource links -->
+      <div class="card">
+        <div class="card-title">Resources</div>
+        <div class="dev-links">
+          <a class="dev-link" href="/docs" target="_blank">
+            <div class="dev-link-icon">📖</div>
+            <div>
+              <div class="dev-link-label">API Reference</div>
+              <div class="dev-link-sub">OpenAPI / Swagger docs</div>
+            </div>
+          </a>
+          <a class="dev-link" href="https://bpel2orkes.kshetra.studio/llms.txt" target="_blank">
+            <div class="dev-link-icon">🤖</div>
+            <div>
+              <div class="dev-link-label">llms.txt</div>
+              <div class="dev-link-sub">AI-friendly API description</div>
+            </div>
+          </a>
+          <a class="dev-link" href="https://github.com/kshetra-studio/bpel2orkes" target="_blank">
+            <div class="dev-link-icon">⚙️</div>
+            <div>
+              <div class="dev-link-label">GitHub — Interface Repo</div>
+              <div class="dev-link-sub">Examples, MCP README, CHANGELOG</div>
+            </div>
+          </a>
+          <a class="dev-link" href="https://bpel2orkes.kshetra.studio/.well-known/mcp/server-card.json" target="_blank">
+            <div class="dev-link-icon">🗂️</div>
+            <div>
+              <div class="dev-link-label">MCP Server Card</div>
+              <div class="dev-link-sub">server-card.json for MCP registries</div>
+            </div>
           </a>
         </div>
-      </div>` : ''}
+      </div>
+    </section>
 
-      <!-- API Key card -->
-      <div class="card">
-        <h3>Your API Key</h3>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
-          Use this key to access the REST API and MCP server. Keep it secret.
-        </div>
-        <div class="api-key-row">
-          <div class="api-key-display" id="key-display">${escHtml(user.apiKey)}</div>
-          <button class="btn btn-secondary" onclick="revealKey()">Show</button>
-          <button class="btn btn-secondary" onclick="copyKey()">Copy</button>
-          <button class="btn btn-danger" id="rotate-btn" onclick="rotateKey()">Rotate</button>
-          <span class="copy-feedback" id="copy-fb">Copied!</span>
-        </div>
+    <!-- ── Billing ────────────────────────────────────────────────────────────── -->
+    <section class="page" id="page-billing">
+      <div class="page-title">Billing</div>
+      <div class="page-sub">Credits and top-up. Credits never expire.</div>
 
-        <div style="margin-top:18px;display:flex;flex-direction:column;gap:12px;font-size:12px">
-          <div>
-            <div style="font-weight:600;color:var(--text);margin-bottom:4px">REST API header</div>
-            <code class="block" id="snippet-rest">X-Api-Key: ${escHtml(user.apiKey)}</code>
-          </div>
-          <div>
-            <div style="font-weight:600;color:var(--text);margin-bottom:4px">Claude Code MCP (HTTP)</div>
-            <code class="block" id="snippet-mcp">claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${escHtml(user.apiKey)}"</code>
-          </div>
-          <div>
-            <div style="font-weight:600;color:var(--text);margin-bottom:4px">Claude Desktop MCP (via mcp-remote)</div>
-            <code class="block" id="snippet-desktop">{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${escHtml(user.apiKey)}"] } } }</code>
-          </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Current Balance</div>
+        <div class="billing-balance">
+          <div class="balance-num" id="billing-balance">—</div>
+          <div class="balance-label">USD credit</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted)" id="billing-rate"></div>
+      </div>
+
+      <div class="card" id="billing-topup-card">
+        <div class="card-title">Top up</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Credits are deducted at the rate shown above. No subscription — pay as you go.</p>
+        <div class="topup-grid">
+          <button class="btn btn-secondary" onclick="topup(500)">$5 <span style="font-size:11px;color:var(--muted);margin-left:4px">50 conv</span></button>
+          <button class="btn btn-secondary" onclick="topup(1000)">$10 <span style="font-size:11px;color:var(--muted);margin-left:4px">100 conv</span></button>
+          <button class="btn btn-secondary" onclick="topup(2500)">$25 <span style="font-size:11px;color:var(--muted);margin-left:4px">250 conv</span></button>
+          <button class="btn btn-upgrade" id="topup-100-btn" onclick="topup(10000)">$100 <span style="font-size:11px;opacity:.85;margin-left:4px">1 000 conv</span></button>
+        </div>
+        <div class="topup-btn-custom">
+          <input class="input" id="custom-amount" type="number" min="5" max="1000" placeholder="Custom amount ($5–$1000)" style="width:200px">
+          <button class="btn btn-secondary" onclick="topupCustom()">Add credits</button>
+        </div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">
+          Need unlimited conversions? <a href="mailto:hello@kshetra.studio?subject=BPEL2Orkes Unlimited Plan" style="color:var(--accent)">Contact us about the Starter plan →</a>
         </div>
       </div>
-    `;
+    </section>
 
-    let _fullKey = null;
+  </main>
+</div>
 
-    function _updateKeyDisplay(key) {
-      document.getElementById('key-display').textContent = key;
-      document.getElementById('snippet-rest').textContent = `X-Api-Key: ${key}`;
-      document.getElementById('snippet-mcp').textContent = `claude mcp add --transport http bpel2orkes https://bpel2orkes.kshetra.studio/mcp/ --header "X-Api-Key: ${key}"`;
-      document.getElementById('snippet-desktop').textContent = `{ "mcpServers": { "bpel2orkes": { "command": "npx", "args": ["mcp-remote", "https://bpel2orkes.kshetra.studio/mcp/", "--header", "X-Api-Key:${key}"] } } }`;
-    }
+<!-- Toast -->
+<div class="toast" id="toast"></div>
 
-    window.revealKey = async () => {
-      if (!_fullKey) {
-        const r = await fetch('/api/v1/my-key', { credentials: 'include' });
-        const d = await r.json();
-        _fullKey = d.apiKey;
-      }
-      _updateKeyDisplay(_fullKey);
-    };
+<script>
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+let _user = null;
+let _fullKey = null;
+let _centsPerConv = 10;
 
-    window.copyKey = async () => {
-      if (!_fullKey) await window.revealKey();
-      await navigator.clipboard.writeText(_fullKey);
-      const fb = document.getElementById('copy-fb');
-      fb.classList.add('show');
-      setTimeout(() => fb.classList.remove('show'), 2000);
-    };
-
-    window.rotateKey = async () => {
-      if (!confirm('Rotate your API key? Your current key will stop working immediately — update any MCP configs or scripts before confirming.')) return;
-      const btn = document.getElementById('rotate-btn');
-      btn.disabled = true; btn.textContent = 'Rotating…';
-      try {
-        const r = await fetch('/api/v1/rotate-key', { method: 'POST', credentials: 'include' });
-        if (!r.ok) { alert('Rotation failed. Please try again.'); return; }
-        const d = await r.json();
-        _fullKey = d.apiKey;
-        _updateKeyDisplay(_fullKey);
-        btn.textContent = 'Rotated!';
-        setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
-      } catch (e) {
-        alert('Rotation failed. Please try again.');
-        btn.disabled = false; btn.textContent = 'Rotate';
-      }
-    };
-
-    window.topup = async (amount_cents) => {
-      const btn = document.getElementById('topup-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-      const r = await fetch('/api/v1/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount_cents }),
-        credentials: 'include',
-      });
-      const d = await r.json();
-      if (d.url) { window.location.href = d.url; return; }
-      if (btn) { btn.disabled = false; btn.textContent = `$${(amount_cents/100).toFixed(0)} — ${Math.floor(amount_cents/centsPerConv)} conv`; }
-      if (r.status === 503) {
-        alert("Payments aren't enabled yet — contact support to add credits manually.");
-      } else {
-        alert('Checkout error: ' + (typeof d.detail === 'string' ? d.detail : 'Something went wrong — please try again.'));
-      }
-    };
-
-    window.topupCustom = () => {
-      const input = document.getElementById('custom-amount');
-      const dollars = parseFloat(input.value);
-      if (!dollars || dollars < 5 || dollars > 1000) {
-        alert('Enter an amount between $5 and $1,000.');
-        return;
-      }
-      window.topup(Math.round(dollars * 100));
-    };
-
+(async () => {
+  try {
+    const r = await fetch('/api/v1/me');
+    if (!r.ok) { window.location.href = '/'; return; }
+    _user = await r.json();
+    _centsPerConv = _user.centsPerConversion || 10;
+    _render();
   } catch(e) {
-    app.innerHTML = `<div style="color:var(--error);padding:20px;font-family:monospace;font-size:13px">
-      <strong>Dashboard error:</strong><br>${e}</div>`;
+    showToast('Failed to load dashboard — ' + e.message, 'error');
   }
 })();
 
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _render() {
+  const u = _user;
+  const remaining = u.conversionsRemaining === 'unlimited' ? '∞' : u.conversionsRemaining;
+  const low = typeof u.conversionsRemaining === 'number' && u.conversionsRemaining <= 5;
+  const balance = '$' + (u.creditBalanceCents / 100).toFixed(2);
+  const rateLabel = `$${(_centsPerConv/100).toFixed(2)} per conversion · $1 = ${Math.floor(100/_centsPerConv)} conversions`;
+  const tierLabel = { free: 'Free', paid: 'Paid', starter: 'Starter (Unlimited)' }[u.tier] || u.tier;
+  const tierClass = u.tier === 'starter' ? 'tier-starter' : u.tier === 'paid' ? 'tier-paid' : 'tier-free';
+  const initial = (u.name || '?')[0].toUpperCase();
+
+  // Top bar
+  document.getElementById('topbar-right').innerHTML = `
+    <div class="user-info">
+      <div class="avatar">${esc(initial)}</div>
+      <div>
+        <div class="user-name">${esc(u.name.split(' ')[0])}</div>
+      </div>
+      <span class="tier-pill ${tierClass}">${tierLabel}</span>
+      <span class="credits-badge ${low ? 'low' : ''}">${remaining} left</span>
+    </div>`;
+
+  // Overview
+  document.getElementById('welcome-title').textContent = `Good ${_tod()}, ${u.name.split(' ')[0]}`;
+  document.getElementById('welcome-sub').textContent = u.email;
+  document.getElementById('stat-remaining').textContent = remaining;
+  document.getElementById('stat-remaining').className = 'stat-value ' + (low ? 'amber' : 'green');
+  document.getElementById('stat-remaining-sub').textContent = low ? 'Running low — top up soon' : 'Available conversions';
+  document.getElementById('stat-balance').textContent = balance;
+  document.getElementById('stat-balance-sub').textContent = rateLabel;
+  document.getElementById('stat-plan').textContent = tierLabel;
+  document.getElementById('stat-plan-sub').textContent = u.tier === 'starter' ? 'Unlimited conversions included' : 'Pay-as-you-go';
+  document.getElementById('acc-avatar').textContent = initial;
+  document.getElementById('acc-name').textContent = u.name;
+  document.getElementById('acc-email').textContent = u.email;
+  const tb = document.getElementById('acc-tier-badge');
+  tb.textContent = tierLabel; tb.className = `tier-pill ${tierClass}`;
+
+  // Developer snippets (masked initially)
+  _updateSnippets(u.apiKey);
+
+  // Billing
+  document.getElementById('billing-balance').textContent = balance;
+  document.getElementById('billing-rate').textContent = rateLabel;
+  if (u.tier === 'starter') {
+    document.getElementById('billing-topup-card').innerHTML =
+      '<div class="card-title">Plan</div><p style="color:var(--success);font-size:13px;font-weight:600">✓ Starter plan — unlimited conversions included.</p>';
+  }
+
+  // Topped-up banner
+  if (new URLSearchParams(location.search).get('topped_up')) {
+    showToast('Credits added — ready to convert!', 'success');
+    history.replaceState({}, '', '/dashboard');
+  }
+}
+
+function _tod() {
+  const h = new Date().getHours();
+  return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+
+function nav(page) {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+  document.querySelectorAll('.page').forEach(el => {
+    el.classList.toggle('active', el.id === 'page-' + page);
+  });
+  closeSidebar();
+}
+
+document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+  btn.addEventListener('click', () => nav(btn.dataset.page));
+});
+
+// Mobile sidebar
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('sidebar-overlay');
+document.getElementById('hamburger').addEventListener('click', () => {
+  sidebar.classList.add('open');
+  overlay.classList.add('open');
+});
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  overlay.classList.remove('open');
+}
+overlay.addEventListener('click', closeSidebar);
+
+// ── API Key ───────────────────────────────────────────────────────────────────
+
+function _updateSnippets(key) {
+  document.getElementById('snippet-rest').textContent = `X-Api-Key: ${key}`;
+  document.getElementById('snippet-mcp').textContent =
+    `claude mcp add --transport http bpel2orkes \\\n  https://bpel2orkes.kshetra.studio/mcp/ \\\n  --header "X-Api-Key: ${key}"`;
+  document.getElementById('snippet-desktop').textContent =
+    `{\n  "mcpServers": {\n    "bpel2orkes": {\n      "command": "npx",\n      "args": [\n        "mcp-remote",\n        "https://bpel2orkes.kshetra.studio/mcp/",\n        "--header",\n        "X-Api-Key:${key}"\n      ]\n    }\n  }\n}`;
+}
+
+async function revealKey() {
+  if (!_fullKey) {
+    const r = await fetch('/api/v1/my-key', { credentials: 'include' });
+    if (!r.ok) { showToast('Failed to fetch key', 'error'); return; }
+    _fullKey = (await r.json()).apiKey;
+  }
+  document.getElementById('key-display').textContent = _fullKey;
+  _updateSnippets(_fullKey);
+}
+
+async function copyKey() {
+  if (!_fullKey) await revealKey();
+  if (!_fullKey) return;
+  await navigator.clipboard.writeText(_fullKey);
+  flashCopy(document.getElementById('copy-key-btn'));
+}
+
+async function copySnippet(id, btn) {
+  if (!_fullKey) await revealKey();
+  await navigator.clipboard.writeText(document.getElementById(id).textContent);
+  flashCopy(btn);
+}
+
+function flashCopy(btn) {
+  btn.classList.add('show-copied');
+  setTimeout(() => btn.classList.remove('show-copied'), 1800);
+}
+
+async function rotateKey() {
+  if (!confirm('Rotate your API key? Your current key will stop working immediately — update any MCP configs or scripts before confirming.')) return;
+  const btn = document.getElementById('rotate-btn');
+  btn.disabled = true; btn.textContent = 'Rotating…';
+  try {
+    const r = await fetch('/api/v1/rotate-key', { method: 'POST', credentials: 'include' });
+    if (!r.ok) throw new Error('Server error');
+    _fullKey = (await r.json()).apiKey;
+    document.getElementById('key-display').textContent = _fullKey;
+    _updateSnippets(_fullKey);
+    btn.textContent = 'Rotated ✓';
+    showToast('API key rotated — update your MCP configs', 'success');
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Rotate'; }, 3000);
+  } catch(e) {
+    showToast('Rotation failed — please try again', 'error');
+    btn.disabled = false; btn.textContent = 'Rotate';
+  }
+}
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+async function topup(cents) {
+  const btn = document.getElementById('topup-100-btn');
+  if (btn && cents === 10000) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const r = await fetch('/api/v1/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount_cents: cents }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.url) { window.location.href = d.url; return; }
+    if (r.status === 503) showToast("Payments not yet enabled — contact support", 'error');
+    else showToast('Checkout error: ' + (d.detail || 'unknown'), 'error');
+  } finally {
+    if (btn && cents === 10000) { btn.disabled = false; btn.textContent = '$100'; }
+  }
+}
+
+function topupCustom() {
+  const v = parseFloat(document.getElementById('custom-amount').value);
+  if (!v || v < 5 || v > 1000) { showToast('Enter an amount between $5 and $1,000', 'error'); return; }
+  topup(Math.round(v * 100));
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+let _toastTimer;
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ── Util ──────────────────────────────────────────────────────────────────────
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 </body>
 </html>
