@@ -230,6 +230,10 @@
   <nav class="sidebar" id="sidebar">
     <div class="nav-section">
       <div class="nav-label">Workspace</div>
+      <a class="nav-item" href="/convert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+        Convert
+      </a>
       <button class="nav-item active" data-page="overview">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         Overview
@@ -248,7 +252,7 @@
 
     <div class="nav-section">
       <div class="nav-label">Resources</div>
-      <a class="nav-item" href="/docs" target="_blank">
+      <a class="nav-item" href="/api/docs" target="_blank">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         API Docs
       </a>
@@ -575,6 +579,10 @@ function nav(page) {
 document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
   btn.addEventListener('click', () => nav(btn.dataset.page));
 });
+
+// Support deep-links from convert page: /dashboard?page=developer
+const _urlPage = new URLSearchParams(location.search).get('page');
+if (_urlPage) nav(_urlPage);
 
 // Mobile sidebar
 const sidebar = document.getElementById('sidebar');

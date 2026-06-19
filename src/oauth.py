@@ -105,7 +105,7 @@ async def github_callback(request: Request, code: str, state: str):
     emails = email_resp.json()
     primary_email = next((e["email"] for e in emails if e.get("primary")), gh.get("email", ""))
     user = get_or_create_user("github", str(gh["id"]), primary_email, gh.get("name") or gh.get("login", ""))
-    response = RedirectResponse("/dashboard")
+    response = RedirectResponse("/convert")
     response.delete_cookie("oauth_state")
     _set_session(response, user)
     return response

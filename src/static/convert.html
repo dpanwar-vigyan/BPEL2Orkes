@@ -181,30 +181,133 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+  /* ── Sidebar shell (mirrors dashboard) ── */
+  --header-h: 52px;
+  --sidebar-w: 200px;
+
+  .topbar-shell {
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: var(--header-h);
+    flex-shrink: 0;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .shell { display: flex; flex: 1; min-height: 0; }
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    flex-shrink: 0; overflow-y: auto;
+    position: sticky; top: var(--header-h);
+    height: calc(100vh - var(--header-h));
+  }
+  .nav-section { padding: 14px 10px 6px; }
+  .nav-label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; padding: 0 8px; margin-bottom: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 10px; border-radius: 7px;
+    font-size: 13px; font-weight: 500; color: var(--muted);
+    cursor: pointer; text-decoration: none;
+    transition: background .12s, color .12s;
+    border: none; background: none; width: 100%; text-align: left; font-family: var(--font);
+  }
+  .nav-item:hover { background: #fff; color: var(--text); }
+  .nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+  .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: .7; }
+  .nav-item.active svg { opacity: 1; }
+  .nav-divider { border: none; border-top: 1px solid var(--border); margin: 6px 10px; }
+  .sidebar-bottom { margin-top: auto; padding: 10px; }
+  .converter-shell { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+
+  /* ── Hamburger (mobile) ── */
+  .hamburger { display: none; background: none; border: none; cursor: pointer; padding: 4px; color: var(--muted); }
+  .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 30; }
+
   @media (max-width: 800px) {
     .main { grid-template-columns: 1fr; grid-template-rows: 50vh 50vh; }
     .panel { border-right: none; border-bottom: 1px solid var(--border); }
+    --sidebar-w: 220px;
+    .sidebar { position: fixed; top: 0; left: calc(-1 * var(--sidebar-w)); height: 100vh; z-index: 40; transition: left .2s; }
+    .sidebar.open { left: 0; }
+    .sidebar-overlay.open { display: block; }
+    .hamburger { display: block; }
   }
 </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
-<header>
-  <a class="back-link" href="/dashboard">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-    Dashboard
-  </a>
+<!-- ── Sidebar overlay (mobile) ── -->
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+<!-- ── Topbar ── -->
+<div class="topbar-shell">
+  <button class="hamburger" id="hamburger" aria-label="Menu">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
   <a class="wordmark" href="/">
     <span class="wordmark-main">BPEL<span>2</span>Orkes</span>
     <span class="wordmark-sub">KTools · Kshetra Studio</span>
   </a>
   <span class="env-badge" id="env-badge">STAGING</span>
-  <div class="header-right" id="auth-area"></div>
-</header>
+  <div class="header-right" id="auth-area" style="margin-left:auto"></div>
+</div>
 
-<!-- ── Converter ── -->
-<div class="main">
+<!-- ── Shell: sidebar + converter ── -->
+<div class="shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-section">
+      <div class="nav-label">Workspace</div>
+      <a class="nav-item active" href="/convert">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+        Convert
+      </a>
+      <a class="nav-item" href="/dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </a>
+      <a class="nav-item" href="/dashboard?page=developer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Developer
+      </a>
+      <a class="nav-item" href="/dashboard?page=billing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Billing
+      </a>
+    </div>
+
+    <hr class="nav-divider">
+
+    <div class="nav-section">
+      <div class="nav-label">Resources</div>
+      <a class="nav-item" href="/api/docs" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        API Docs
+      </a>
+      <a class="nav-item" href="https://github.com/kshetra-studio/bpel2orkes" target="_blank">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        GitHub
+      </a>
+    </div>
+
+    <div class="sidebar-bottom">
+      <a class="nav-item" href="/auth/logout" style="color:var(--error)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sign out
+      </a>
+    </div>
+  </nav>
+
+  <!-- ── Converter ── -->
+  <div class="converter-shell">
+  <div class="main">
 
   <!-- LEFT: Input -->
   <div class="panel">
@@ -340,6 +443,8 @@
   </div>
 
 </div>
+  </div><!-- /converter-shell -->
+</div><!-- /shell -->
 
 <!-- Auth modal -->
 <div class="modal-overlay" id="auth-modal" style="display:none">
@@ -370,6 +475,15 @@ mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose
 window._mermaid = mermaid;
 </script>
 <script>
+// Mobile sidebar toggle
+(function() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  const hamburger = document.getElementById('hamburger');
+  if (hamburger) hamburger.addEventListener('click', () => { sidebar.classList.add('open'); overlay.classList.add('open'); });
+  if (overlay)   overlay.addEventListener('click',   () => { sidebar.classList.remove('open'); overlay.classList.remove('open'); });
+})();
+
 const API = '';
 let _currentUser = null;
 
