@@ -1,0 +1,65 @@
+{
+  "name": "bpel2orkes",
+  "description": "Convert IBM WS-BPEL 2.0 workflows to Orkes Conductor automatically. Migrate IBM BPM, WebSphere Process Server, and TIBCO BPEL processes to deployment-ready Orkes Conductor JSON in minutes instead of weeks.",
+  "version": "1.0.0",
+  "author": "Kshetra",
+  "homepage": "https://bpel2orkes.kshetra.studio",
+  "license": "SEE LICENSE FILE",
+  "authentication": {
+    "type": "header",
+    "header": "X-Api-Key",
+    "description": "API key from bpel2orkes.kshetra.studio. Sign in with GitHub - 50 free conversions included."
+  },
+  "tools": [
+    {
+      "name": "convert_bpel",
+      "description": "Convert an IBM WS-BPEL 2.0 XML process definition to Orkes Conductor workflow JSON. Returns deployment-ready workflow JSON, a migration complexity assessment (green/amber/red), and a link to a visual flow diagram.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bpel_xml": {
+            "type": "string",
+            "description": "IBM WS-BPEL 2.0 XML process definition as a string"
+          }
+        },
+        "required": ["bpel_xml"]
+      }
+    },
+    {
+      "name": "get_migration_tips",
+      "description": "Given the warnings from a conversion, return a structured migration guide with recommended actions for each flagged construct.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assessment": {
+            "type": "object",
+            "description": "The assessment object returned from convert_bpel"
+          }
+        },
+        "required": ["assessment"]
+      }
+    },
+    {
+      "name": "validate_on_orkes",
+      "description": "Convert BPEL XML and register the main workflow on an Orkes Conductor instance for immediate testing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bpel_xml": {
+            "type": "string",
+            "description": "IBM WS-BPEL 2.0 XML process definition"
+          },
+          "orkes_url": {
+            "type": "string",
+            "description": "Your Orkes Conductor instance URL"
+          },
+          "orkes_key": {
+            "type": "string",
+            "description": "Your Orkes Conductor API key"
+          }
+        },
+        "required": ["bpel_xml", "orkes_url", "orkes_key"]
+      }
+    }
+  ]
+}
