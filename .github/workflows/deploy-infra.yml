@@ -41,17 +41,15 @@ jobs:
           python-version: "3.11"
 
       - name: Install CDK + deps
-        working-directory: infra
         run: |
           npm install -g aws-cdk
-          python3 -m venv .venv
-          .venv/bin/pip install -q aws-cdk-lib constructs
+          python3 -m venv infra/.venv
+          infra/.venv/bin/pip install -q aws-cdk-lib constructs
 
       - name: cdk diff
-        working-directory: infra
         run: |
           STACK="Bpel2Orkes${{ inputs.environment == 'production' && 'Production' || 'Staging' }}Serverless"
-          cdk diff --app '.venv/bin/python3 app.py' "$STACK" || true
+          cdk diff --app 'infra/.venv/bin/python3 infra/app.py' "$STACK" || true
 
   deploy-infra:
     name: cdk deploy → ${{ inputs.environment }}
@@ -72,14 +70,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install CDK + deps
-        working-directory: infra
         run: |
           npm install -g aws-cdk
-          python3 -m venv .venv
-          .venv/bin/pip install -q aws-cdk-lib constructs
+          python3 -m venv infra/.venv
+          infra/.venv/bin/pip install -q aws-cdk-lib constructs
 
       - name: cdk deploy
-        working-directory: infra
         run: |
           STACK="Bpel2Orkes${{ inputs.environment == 'production' && 'Production' || 'Staging' }}Serverless"
-          cdk deploy --app '.venv/bin/python3 app.py' "$STACK" --require-approval never
+          cdk deploy --app 'infra/.venv/bin/python3 infra/app.py' "$STACK" --require-approval never
