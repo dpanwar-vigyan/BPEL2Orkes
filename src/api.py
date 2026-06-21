@@ -596,8 +596,8 @@ async def stripe_webhook(request: Request):
 
     if event["type"] == "checkout.session.completed":
         sess = event["data"]["object"]
-        user_id = sess.get("client_reference_id")
-        amount_cents = int(sess.get("amount_total", 0))
+        user_id = sess["client_reference_id"] if "client_reference_id" in sess else None
+        amount_cents = int(sess["amount_total"]) if "amount_total" in sess else 0
         if user_id and amount_cents > 0:
             add_credits(user_id, amount_cents)
 

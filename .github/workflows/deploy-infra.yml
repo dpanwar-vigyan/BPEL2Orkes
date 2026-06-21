@@ -1,0 +1,85 @@
+name: Deploy Infra
+
+# Separate, deliberate path for CDK changes (WAF, API Gateway, IAM, DynamoDB schema).
+# Never auto-triggered on push — infra changes are rare and higher-blast-radius
+# than app code, so they get a manual gate + explicit environment choice.
+# App code deploys (Lambda image) stay in deploy.yml and remain fast/automatic.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  id-token: write   # needed for OIDC
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  ROLE_ARN: arn:aws:iam::835422347653:role/github-actions-bpel2orkes
+
+jobs:
+  cdk-diff:
+    name: cdk diff (review before deploy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CDK + deps
+        working-directory: infra
+        run: |
+          npm install -g aws-cdk
+          python3 -m venv .venv
+          .venv/bin/pip install -q aws-cdk-lib constructs
+
+      - name: cdk diff
+        working-directory: infra
+        run: |
+          STACK="Bpel2Orkes${{ inputs.environment == 'production' && 'Production' || 'Staging' }}Serverless"
+          cdk diff --app '.venv/bin/python3 app.py' "$STACK" || true
+
+  deploy-infra:
+    name: cdk deploy → ${{ inputs.environment }}
+    needs: cdk-diff
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # production requires manual approval in GitHub
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CDK + deps
+        working-directory: infra
+        run: |
+          npm install -g aws-cdk
+          python3 -m venv .venv
+          .venv/bin/pip install -q aws-cdk-lib constructs
+
+      - name: cdk deploy
+        working-directory: infra
+        run: |
+          STACK="Bpel2Orkes${{ inputs.environment == 'production' && 'Production' || 'Staging' }}Serverless"
+          cdk deploy --app '.venv/bin/python3 app.py' "$STACK" --require-approval never
