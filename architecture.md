@@ -72,6 +72,14 @@ Always verify with `cdk diff` (should show no changes) or a direct AWS check
   repo root). This caused `RuntimeError: Cannot find file at .../infra/Dockerfile.lambda`
   the first time `deploy-infra.yml` ran.
 - Stack names: `Bpel2OrkesStagingServerless`, `Bpel2OrkesProductionServerless`.
+- **CDK's asset bundling needs QEMU registered.** `DockerImageCode.from_image_asset`
+  shells out to plain `docker build`, not `buildx` (unlike `deploy.yml`, which builds
+  the same ARM64 image via `docker buildx build --platform linux/arm64` explicitly).
+  On an x86 GitHub runner with no QEMU registered, building the ARM64 image fails
+  partway through `apt-get` (`exit code: 255`) — a classic unregistered-binfmt
+  emulation symptom, not a Dockerfile bug. Fix: add `docker/setup-qemu-action@v3`
+  before any `cdk diff`/`cdk deploy` step (both need it — `cdk diff` also bundles
+  assets to compute the hash).
 
 ### CDK bootstrap IAM (fixed 2026-06-21)
 
