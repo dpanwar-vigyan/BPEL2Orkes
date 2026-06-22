@@ -116,6 +116,25 @@ def mcp_server_card():
     )
 
 
+@app.get("/.well-known/oauth-protected-resource", include_in_schema=False)
+@app.get("/.well-known/oauth-protected-resource/mcp/", include_in_schema=False)
+def oauth_protected_resource():
+    """
+    RFC 9728 resource metadata. We use X-Api-Key header auth, not OAuth — an
+    empty authorization_servers list tells MCP clients no OAuth server is
+    required, instead of them inferring it from a bare 404.
+    """
+    return JSONResponse(
+        content={
+            "resource": f"{BASE_URL}/mcp/",
+            "authorization_servers": [],
+            "bearer_methods_supported": ["header"],
+            "resource_signing_alg_values_supported": [],
+        },
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def ui():
     index = _STATIC_DIR / "index.html"
